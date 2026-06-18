@@ -112,6 +112,8 @@ const buildDetailsForOwner = (
 
   const ownerRents = dailyRents.filter(r => r.ownerId === ownerId && r.date.startsWith(period))
   const ownerOrders = outboundOrders.filter(o => o.ownerId === ownerId && o.status === 'shipped' && (o.shippedAt ?? o.createdAt).startsWith(period))
+  const shippedOrderIds = new Set(outboundOrders.filter(o => o.ownerId === ownerId && o.status === 'shipped' && (o.shippedAt ?? o.createdAt).startsWith(period)).map(o => o.id))
+  const allOrderIds = new Set(outboundOrders.map(o => o.id))
 
   const orderFeeMap = new Map<string, number>()
   ownerOrders.forEach(o => { orderFeeMap.set(o.id, (o.operationFee ?? o.quantity * OPERATION_FEE_UNIT)) })
@@ -132,6 +134,7 @@ const buildDetailsForOwner = (
 
   commissionRecords
     .filter(c => c.ownerId === ownerId && c.createdAt.startsWith(period))
+    .filter(c => shippedOrderIds.has(c.outboundOrderId) || !allOrderIds.has(c.outboundOrderId))
     .forEach(c => {
       matchedRecordIds.add(c.outboundOrderId)
       feeDetails.push({
@@ -476,6 +479,13 @@ export const useWarehouseStore = create<WarehouseState>((set, get) => ({
       if (!ownerInfo) continue
       const ownerName = ownerInfo.ownerName
 
+      const existingUnsettled = unsettledByOwner.get(ownerId)
+
+      if (existingUnsettled && existingUnsettled.status === 'confirmed') {
+        newBills.push(existingUnsettled)
+        continue
+      }
+
       const { details } = buildDetailsForOwner(
         ownerId, period, state.dailyRents, state.commissionRecords, state.outboundOrders, state.commissionRules
       )
@@ -483,7 +493,6 @@ export const useWarehouseStore = create<WarehouseState>((set, get) => ({
 
       const sum = sumBillFromDetails(details)
 
-      const existingUnsettled = unsettledByOwner.get(ownerId)
       newBills.push({
         id: existingUnsettled?.id ?? `SB${generateId()}`,
         period, ownerId, ownerName,
@@ -642,3 +651,4 @@ export const useWarehouseStore = create<WarehouseState>((set, get) => ({
     return result.sort((a, b) => (b.totalRent + b.totalOutboundFee) - (a.totalRent + a.totalOutboundFee))
   },
 }))
+

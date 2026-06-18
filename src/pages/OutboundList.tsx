@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Plus, FileText } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Plus, FileText, X } from 'lucide-react'
 import { useWarehouseStore } from '@/store/useWarehouseStore'
 import type { OutboundOrder } from '@/types'
 
@@ -21,12 +21,25 @@ const STATUS_CONFIG: Record<OutboundOrder['status'], { label: string; color: str
 
 export default function OutboundList() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const outboundOrders = useWarehouseStore((s) => s.outboundOrders)
+  const batches = useWarehouseStore((s) => s.batches)
   const [activeTab, setActiveTab] = useState<TabKey>('all')
 
-  const filtered = activeTab === 'all'
+  const filterOwnerId = searchParams.get('ownerId')
+  const filterPeriod = searchParams.get('period')
+
+  const ownerName = filterOwnerId
+    ? (batches.find(b => b.ownerId === filterOwnerId)?.ownerName
+      ?? outboundOrders.find(o => o.ownerId === filterOwnerId)?.ownerName
+      ?? '')
+    : ''
+
+  let filtered: OutboundOrder[] = activeTab === 'all'
     ? outboundOrders
     : outboundOrders.filter((o) => o.status === activeTab)
+  if (filterOwnerId) filtered = filtered.filter(o => o.ownerId === filterOwnerId)
+  if (filterPeriod) filtered = filtered.filter(o => (o.shippedAt ?? o.createdAt).startsWith(filterPeriod))
 
   const handlePick = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -87,7 +100,25 @@ export default function OutboundList() {
     <div className="min-h-screen bg-dark-900 font-body">
       <div className="sticky top-0 z-10 bg-dark-800 px-4 pb-0 pt-12">
         <h1 className="font-display text-xl font-bold text-white">效期出库</h1>
-        <div className="mt-4 flex gap-1 rounded-xl bg-dark-700 p-1">
+        {filterOwnerId && (
+          <div className="mt-4 flex items-center justify-between rounded-xl bg-accent-blue/10 border border-accent-blue/30 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm flex-wrap">
+              <span className="text-gray-400">筛选：</span>
+              <span className="font-medium text-accent-blue">货主：{ownerName}</span>
+              {filterPeriod && (
+                <span className="font-medium text-accent-amber">账期：{filterPeriod}</span>
+              )}
+            </div>
+            <button
+              onClick={() => navigate('/outbound')}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-dark-700 text-gray-300 text-xs font-medium hover:bg-dark-600 transition-colors"
+            >
+              <X size={14} />
+              <span>清除筛选</span>
+            </button>
+          </div>
+        )}
+        <div className={`flex gap-1 rounded-xl bg-dark-700 p-1 ${filterOwnerId ? 'mt-3' : 'mt-4'}`}>
           {TABS.map((tab) => (
             <button
               key={tab.key}

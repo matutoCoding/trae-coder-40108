@@ -1,12 +1,65 @@
-import { useState, useMemo } from 'react'
-import { FileText, Calendar, ChevronDown, ChevronUp, Warehouse, Truck, CheckCircle2, CircleDot, Clock, Lock, GitCompare, Download, Plus, Minus } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
+import { FileText, Calendar, ChevronDown, ChevronUp, Warehouse, Truck, CheckCircle2, CircleDot, Clock, Lock, GitCompare, Download, Plus, Minus, AlertTriangle, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useWarehouseStore } from '@/store/useWarehouseStore'
 import type { SettlementBill, SettlementDiff } from '@/types'
 
-const statusConfig: Record<SettlementBill['status'], { label: string; color: string; bg: string; icon: React.ReactNode }> = {
-  pending: { label: '待确认', color: 'text-accent-amber', bg: 'bg-accent-amber/15', icon: <Clock size={12} /> },
-  confirmed: { label: '已确认', color: 'text-accent-blue', bg: 'bg-accent-blue/15', icon: <CircleDot size={12} /> },
-  settled: { label: '已结算', color: 'text-accent-green', bg: 'bg-accent-green/15', icon: <CheckCircle2 size={12} /> },
+const TABS = [
+  { key: 'all', label: '全部' },
+  { key: 'pending', label: '待确认' },
+  { key: 'confirmed', label: '已确认' },
+  { key: 'settled', label: '已结算' },
+] as const
+
+type TabKey = (typeof TABS)[number]['key']
+
+interface StatusStyle {
+  badge: {
+    label: string
+    color: string
+    bg: string
+    icon: React.ReactNode
+  }
+  stripeColor: string
+  borderColor: string
+  hintText: string
+}
+
+const statusConfig: Record<SettlementBill['status'], StatusStyle> = {
+  pending: {
+    badge: {
+      label: '待确认',
+      color: 'text-accent-blue',
+      bg: 'bg-accent-blue/15 border border-accent-blue/25',
+      icon: <Clock size={12} />,
+    },
+    stripeColor: 'bg-accent-blue',
+    borderColor: 'border-dark-600',
+    hintText: '数据跟随实时变化',
+  },
+  confirmed: {
+    badge: {
+      label: '已确认 · 快照',
+      color: 'text-accent-amber',
+      bg: 'bg-accent-amber/15 border border-accent-amber/30',
+      icon: <AlertTriangle size={12} />,
+    },
+    stripeColor: 'bg-accent-amber',
+    borderColor: 'border-accent-amber/50',
+    hintText: '金额已冻结，新数据见复核差异',
+  },
+  settled: {
+    badge: {
+      label: '🔒 已结算 · 锁定',
+      color: 'text-gray-400',
+      bg: 'bg-gray-500/15 border border-gray-500/25',
+      icon: null,
+    },
+    stripeColor: 'bg-gray-500',
+    borderColor: 'border-dark-500',
+    hintText: '不可修改，归档保留',
+  },
 }
 
 function getCurrentMonth() {
@@ -74,7 +127,11 @@ function DiffAmount({ value, label }: { value: number; label: string }) {
 }
 
 export default function Settlement() {
-  const [period, setPeriod] = useState(getCurrentMonth)
+  const location = useLocation()
+  const locState = location.state as { ownerId?: string; period?: string } | null
+  const [period, setPeriod] = useState<string>(() => locState?.period ?? getCurrentMonth())
+  const [filterOwnerId, setFilterOwnerId] = useState<string | null>(() => locState?.ownerId ?? null)
+  const [filterStatus, setFilterStatus] = useState<TabKey>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [diffExpandedId, setDiffExpandedId] = useState<string | null>(null)
   const [diffMap, setDiffMap] = useState<Record<string, SettlementDiff | null>>({})
@@ -84,11 +141,27 @@ export default function Settlement() {
   const settleSettlement = useWarehouseStore((s) => s.settleSettlement)
   const compareSettlementDiff = useWarehouseStore((s) => s.compareSettlementDiff)
   const exportSettlementToCSV = useWarehouseStore((s) => s.exportSettlementToCSV)
+  const batches = useWarehouseStore((s) => s.batches)
 
-  const filteredBills = useMemo(
-    () => settlementBills.filter((b) => b.period === period),
-    [settlementBills, period]
-  )
+  useEffect(() => {
+    if (locState?.period) setPeriod(locState.period)
+    if (locState?.ownerId) setFilterOwnerId(locState.ownerId)
+  }, [locState?.period, locState?.ownerId])
+
+  const filteredBills = useMemo(() => {
+    let result = settlementBills.filter((b) => b.period === period)
+    if (filterStatus !== 'all') {
+      result = result.filter((b) => b.status === filterStatus)
+    }
+    if (filterOwnerId) {
+      result = result.filter((b) => b.ownerId === filterOwnerId)
+    }
+    return result
+  }, [settlementBills, period, filterStatus, filterOwnerId])
+
+  const filterOwnerName = filterOwnerId
+    ? (settlementBills.find((b) => b.ownerId === filterOwnerId)?.ownerName ?? batches.find((b) => b.ownerId === filterOwnerId)?.ownerName)
+    : null
 
   const toggleExpand = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id))
@@ -116,10 +189,43 @@ export default function Settlement() {
   return (
     <div className="min-h-screen bg-dark-900 font-body pb-6">
       <div className="sticky top-0 z-10 bg-dark-900/95 backdrop-blur-sm border-b border-dark-600">
-        <h1 className="font-display text-lg font-semibold text-white px-4 pt-4 pb-3">对账结算</h1>
+        <h1 className="font-display text-lg font-semibold text-white px-4 pt-4 pb-2">对账结算</h1>
+        <div className="px-4 pb-3">
+          <div className="flex gap-1 rounded-xl bg-dark-700 p-1">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setFilterStatus(tab.key)}
+                className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+                  filterStatus === tab.key
+                    ? 'bg-dark-600 text-white shadow-sm'
+                    : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="px-4 pt-4 space-y-4">
+        {filterOwnerId && (
+          <div className="flex items-center justify-between bg-accent-blue/10 border border-accent-blue/20 rounded-xl px-3 py-2.5">
+            <div className="flex items-center gap-2 text-sm text-accent-blue">
+              <span className="text-gray-400">筛选：</span>
+              <span className="font-medium">货主「{filterOwnerName ?? filterOwnerId}」</span>
+            </div>
+            <button
+              onClick={() => setFilterOwnerId(null)}
+              className="flex items-center gap-1 text-gray-400 hover:text-white text-xs transition-colors"
+            >
+              <X size={14} />
+              清除
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center gap-3">
           <div className="flex-1 flex items-center gap-2 bg-dark-800 rounded-xl px-3 py-2.5 border border-dark-600">
             <Calendar size={16} className="text-accent-blue flex-shrink-0" />
@@ -153,28 +259,37 @@ export default function Settlement() {
             const allDiffZero = diff && diff.amountDiff === 0 && diff.platformDiff === 0 && diff.warehouseDiff === 0 && diff.ownerDiff === 0
 
             return (
-              <div key={bill.id} className={`bg-dark-800 rounded-xl border overflow-hidden ${isSettled ? 'border-dark-500' : 'border-dark-600'}`}>
+              <div
+                key={bill.id}
+                className={cn(
+                  'relative bg-dark-800 rounded-xl border overflow-hidden',
+                  status.borderColor
+                )}
+              >
+                <div className={cn('absolute left-0 top-0 bottom-0 w-1', status.stripeColor)} />
+
                 <div
-                  className="px-4 py-3 flex items-center gap-2 cursor-pointer active:bg-dark-700/50 transition-colors"
+                  className="pl-4 pr-4 py-3 flex items-center gap-2 cursor-pointer active:bg-dark-700/50 transition-colors"
                   onClick={() => toggleExpand(bill.id)}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                       <span className="text-white text-sm font-medium truncate">{bill.ownerName}</span>
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${status.color} ${status.bg}`}>
-                        {status.icon}
-                        {status.label}
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full',
+                          status.badge.color,
+                          status.badge.bg
+                        )}
+                      >
+                        {status.badge.icon}
+                        {status.badge.label}
                       </span>
+                      <span className="text-[10px] text-gray-500">· {status.hintText}</span>
                       {bill.exportedAt && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full text-accent-green bg-accent-green/15">
                           <span className="w-1.5 h-1.5 rounded-full bg-accent-green" />
                           已导出
-                        </span>
-                      )}
-                      {isSettled && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full text-gray-400 bg-gray-500/15">
-                          <Lock size={10} />
-                          已结算，不可修改
                         </span>
                       )}
                     </div>
@@ -189,7 +304,7 @@ export default function Settlement() {
                       <Download size={12} />
                       导出
                     </button>
-                    {bill.status === 'pending' && (
+                    {bill.status !== 'settled' && (
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleDiff(bill.id) }}
                         className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1.5 rounded-lg active:scale-95 transition-all ${
