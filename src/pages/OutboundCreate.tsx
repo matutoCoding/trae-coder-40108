@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChevronDown, AlertTriangle, Lock } from 'lucide-react'
-import { useWarehouseStore } from '@/store/useWarehouseStore'
+import { useWarehouseStore, computeBatchStatus } from '@/store/useWarehouseStore'
 
 interface SkuOption {
   sku: string
@@ -27,9 +27,10 @@ export default function OutboundCreate() {
     const seen = new Map<string, SkuOption>()
     for (const b of batches) {
       if (b.remainingQuantity <= 0) continue
+      const bStatus = computeBatchStatus(b.expiryDate)
       if (seen.has(b.sku)) {
         const existing = seen.get(b.sku)!
-        if (b.status !== 'expired') existing.hasAvailableOnlyExpired = false
+        if (bStatus !== 'expired') existing.hasAvailableOnlyExpired = false
         continue
       }
       seen.set(b.sku, {
@@ -37,7 +38,7 @@ export default function OutboundCreate() {
         skuName: b.skuName,
         ownerId: b.ownerId,
         ownerName: b.ownerName,
-        hasAvailableOnlyExpired: b.status === 'expired',
+        hasAvailableOnlyExpired: bStatus === 'expired',
       })
     }
     return Array.from(seen.values())

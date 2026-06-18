@@ -6,17 +6,17 @@ import type { OutboundOrder } from '@/types'
 
 const TABS = [
   { key: 'all', label: '全部' },
-  { key: 'pending', label: '待确认' },
-  { key: 'confirmed', label: '已确认' },
-  { key: 'completed', label: '已完成' },
+  { key: 'picking', label: '待拣货' },
+  { key: 'picked', label: '已拣货' },
+  { key: 'shipped', label: '已出库' },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
 
 const STATUS_CONFIG: Record<OutboundOrder['status'], { label: string; color: string }> = {
-  pending: { label: '待确认', color: 'bg-accent-amber/20 text-accent-amber' },
-  confirmed: { label: '已确认', color: 'bg-accent-blue/20 text-accent-blue' },
-  completed: { label: '已完成', color: 'bg-accent-green/20 text-accent-green' },
+  picking: { label: '待拣货', color: 'bg-accent-blue/20 text-accent-blue' },
+  picked: { label: '已拣货', color: 'bg-accent-amber/20 text-accent-amber' },
+  shipped: { label: '已出库', color: 'bg-accent-green/20 text-accent-green' },
 }
 
 export default function OutboundList() {
@@ -27,6 +27,61 @@ export default function OutboundList() {
   const filtered = activeTab === 'all'
     ? outboundOrders
     : outboundOrders.filter((o) => o.status === activeTab)
+
+  const handlePick = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const ok = useWarehouseStore.getState().pickOutboundOrder(id)
+    if (ok) {
+      alert('✓ 拣货成功')
+    } else {
+      alert('✗ 拣货失败')
+    }
+  }
+
+  const handleShip = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const ok = useWarehouseStore.getState().shipOutboundOrder(id)
+    if (ok) {
+      alert('✓ 出库成功')
+    } else {
+      alert('✗ 出库失败')
+    }
+  }
+
+  const renderCTA = (order: OutboundOrder) => {
+    switch (order.status) {
+      case 'picking':
+        return (
+          <button
+            onClick={(e) => handlePick(order.id, e)}
+            className="w-full rounded-lg bg-accent-blue py-2 text-sm font-medium text-white transition-opacity active:opacity-80"
+          >
+            开始拣货
+          </button>
+        )
+      case 'picked':
+        return (
+          <button
+            onClick={(e) => handleShip(order.id, e)}
+            className="w-full rounded-lg bg-accent-green py-2 text-sm font-medium text-white transition-opacity active:opacity-80"
+          >
+            确认出库
+          </button>
+        )
+      case 'shipped':
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              navigate(`/outbound/${order.id}`)
+            }}
+            className="w-full rounded-lg bg-dark-700 py-2 text-sm font-medium text-gray-300 transition-colors active:bg-dark-600"
+          >
+            查看详情
+          </button>
+        )
+    }
+  }
 
   return (
     <div className="min-h-screen bg-dark-900 font-body">
@@ -79,6 +134,9 @@ export default function OutboundList() {
                       出库数量 <span className="font-mono font-medium text-white">{order.quantity}</span>
                     </span>
                     <span className="font-mono text-xs text-gray-500">{order.createdAt}</span>
+                  </div>
+                  <div className="mt-3">
+                    {renderCTA(order)}
                   </div>
                 </div>
               )

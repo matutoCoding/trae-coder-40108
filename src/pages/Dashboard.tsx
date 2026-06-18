@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, AlertTriangle, Lock, DollarSign, ClipboardList, Plus, FileText, ChevronRight } from 'lucide-react'
-import { useWarehouseStore } from '@/store/useWarehouseStore'
+import { Package, AlertTriangle, Lock, DollarSign, ClipboardList, Plus, FileText, ChevronRight, LogOut } from 'lucide-react'
+import { useWarehouseStore, computeBatchStatus, computeDaysUntilExpiry } from '@/store/useWarehouseStore'
 import StatCard from '@/components/StatCard'
 import { cn } from '@/lib/utils'
 
@@ -11,10 +11,6 @@ function formatDate(): string {
   const day = d.getDate()
   const weekdays = ['日', '一', '二', '三', '四', '五', '六']
   return `${month}月${day}日 周${weekdays[d.getDay()]}`
-}
-
-function getDaysUntilExpiry(expiryDate: string): number {
-  return Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
 }
 
 export default function Dashboard() {
@@ -31,20 +27,21 @@ export default function Dashboard() {
     const monthlyFee = monthRents.reduce((s, r) => s + r.amount, 0) + monthCommissions.reduce((s, c) => s + c.totalFee, 0)
     return {
       totalBatches: batches.filter((b) => b.remainingQuantity > 0).length,
-      nearExpiryCount: batches.filter((b) => b.status === 'nearExpiry' && b.remainingQuantity > 0).length,
-      expiredCount: batches.filter((b) => b.status === 'expired' && b.remainingQuantity > 0).length,
+      nearExpiryCount: batches.filter((b) => computeBatchStatus(b.expiryDate) === 'nearExpiry' && b.remainingQuantity > 0).length,
+      expiredCount: batches.filter((b) => computeBatchStatus(b.expiryDate) === 'expired' && b.remainingQuantity > 0).length,
       monthlyFee: Number(monthlyFee.toFixed(2)),
-      pendingOrders: outboundOrders.filter((o) => o.status === 'pending').length,
+      pickingOrders: outboundOrders.filter((o) => o.status === 'picking').length,
+      shippedOrders: outboundOrders.filter((o) => o.status === 'shipped').length,
     }
   }, [batches, outboundOrders, dailyRents, commissionRecords])
 
   const nearExpiryBatches = useMemo(
-    () => batches.filter((b) => b.status === 'nearExpiry'),
+    () => batches.filter((b) => computeBatchStatus(b.expiryDate) === 'nearExpiry'),
     [batches]
   )
 
   const urgentBatches = [...nearExpiryBatches]
-    .map((b) => ({ ...b, daysLeft: getDaysUntilExpiry(b.expiryDate) }))
+    .map((b) => ({ ...b, daysLeft: computeDaysUntilExpiry(b.expiryDate) }))
     .sort((a, b) => a.daysLeft - b.daysLeft)
     .slice(0, 5)
 
@@ -62,15 +59,24 @@ export default function Dashboard() {
         <StatCard title="本月仓储费" value={`¥${stats.monthlyFee.toLocaleString()}`} icon={<DollarSign size={18} />} color="green" />
       </div>
 
-      <div className="px-4 mt-4">
+      <div className="px-4 mt-4 grid grid-cols-2 gap-3">
         <div className="rounded-xl border bg-dark-800 border-dark-700 p-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-blue/10">
               <ClipboardList className="w-4 h-4 text-accent-blue" />
             </div>
-            <span className="text-sm text-white font-body">待出库单</span>
+            <span className="text-sm text-white font-body">待拣货</span>
           </div>
-          <span className="text-lg font-display font-bold text-accent-blue">{stats.pendingOrders}</span>
+          <span className="text-lg font-display font-bold text-accent-blue">{stats.pickingOrders}</span>
+        </div>
+        <div className="rounded-xl border bg-dark-800 border-dark-700 p-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-green/10">
+              <LogOut className="w-4 h-4 text-accent-green" />
+            </div>
+            <span className="text-sm text-white font-body">已出库</span>
+          </div>
+          <span className="text-lg font-display font-bold text-accent-green">{stats.shippedOrders}</span>
         </div>
       </div>
 

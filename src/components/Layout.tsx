@@ -1,9 +1,10 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Home, Package, LogOut, Coins, FileText } from 'lucide-react'
+import { Home, BarChart3, Package, LogOut, Coins, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const tabs = [
   { path: '/', label: '首页', icon: Home },
+  { path: '/analytics', label: '经营', icon: BarChart3 },
   { path: '/batch', label: '批次', icon: Package },
   { path: '/outbound', label: '出库', icon: LogOut },
   { path: '/commission', label: '分账', icon: Coins },

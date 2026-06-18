@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
-import { FileText, Calendar, ChevronDown, ChevronUp, Warehouse, Truck, CheckCircle2, CircleDot, Clock } from 'lucide-react'
+import { FileText, Calendar, ChevronDown, ChevronUp, Warehouse, Truck, CheckCircle2, CircleDot, Clock, Lock, GitCompare, Download, Plus, Minus } from 'lucide-react'
 import { useWarehouseStore } from '@/store/useWarehouseStore'
-import type { SettlementBill } from '@/types'
+import type { SettlementBill, SettlementDiff } from '@/types'
 
 const statusConfig: Record<SettlementBill['status'], { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   pending: { label: '待确认', color: 'text-accent-amber', bg: 'bg-accent-amber/15', icon: <Clock size={12} /> },
@@ -40,13 +40,50 @@ function computeGroupedSummary(details: SettlementBill['details']): GroupedSumma
   }
 }
 
+function formatDate(dateStr: string | undefined) {
+  if (!dateStr) return null
+  return dateStr.split('T')[0]
+}
+
+function downloadCSV(filename: string, csvContent: string) {
+  const BOM = '\uFEFF'
+  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(url), 100)
+}
+
+function DiffAmount({ value, label }: { value: number; label: string }) {
+  const isZero = value === 0
+  const isPositive = value > 0
+  const textColor = isZero ? 'text-accent-green' : isPositive ? 'text-accent-red' : 'text-accent-green'
+  const sign = value > 0 ? '+' : ''
+  return (
+    <div className="bg-dark-600/50 rounded-lg px-2 py-1.5 text-center">
+      <div className="text-[10px] text-gray-400 mb-0.5">{label}</div>
+      <div className={`font-mono text-[11px] font-semibold ${textColor}`}>
+        {isZero ? '—' : `${sign}¥${value.toFixed(2)}`}
+      </div>
+    </div>
+  )
+}
+
 export default function Settlement() {
   const [period, setPeriod] = useState(getCurrentMonth)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [diffExpandedId, setDiffExpandedId] = useState<string | null>(null)
+  const [diffMap, setDiffMap] = useState<Record<string, SettlementDiff | null>>({})
   const settlementBills = useWarehouseStore((s) => s.settlementBills)
   const generateSettlement = useWarehouseStore((s) => s.generateSettlement)
   const confirmSettlement = useWarehouseStore((s) => s.confirmSettlement)
   const settleSettlement = useWarehouseStore((s) => s.settleSettlement)
+  const compareSettlementDiff = useWarehouseStore((s) => s.compareSettlementDiff)
+  const exportSettlementToCSV = useWarehouseStore((s) => s.exportSettlementToCSV)
 
   const filteredBills = useMemo(
     () => settlementBills.filter((b) => b.period === period),
@@ -55,6 +92,25 @@ export default function Settlement() {
 
   const toggleExpand = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id))
+  }
+
+  const toggleDiff = (billId: string) => {
+    setDiffExpandedId((prev) => {
+      if (prev === billId) return null
+      if (!diffMap[billId]) {
+        const diff = compareSettlementDiff(billId)
+        setDiffMap((m) => ({ ...m, [billId]: diff }))
+      }
+      return billId
+    })
+  }
+
+  const handleExport = (bill: SettlementBill) => {
+    const csv = exportSettlementToCSV(bill.id)
+    if (csv) {
+      const filename = `${bill.period}-${bill.ownerName}-对账单.csv`
+      downloadCSV(filename, csv)
+    }
   }
 
   return (
@@ -89,32 +145,157 @@ export default function Settlement() {
           )}
           {filteredBills.map((bill) => {
             const isExpanded = expandedId === bill.id
+            const isDiffExpanded = diffExpandedId === bill.id
+            const diff = diffMap[bill.id]
+            const isSettled = bill.status === 'settled'
             const status = statusConfig[bill.status]
             const summary = computeGroupedSummary(bill.details)
+            const allDiffZero = diff && diff.amountDiff === 0 && diff.platformDiff === 0 && diff.warehouseDiff === 0 && diff.ownerDiff === 0
 
             return (
-              <div key={bill.id} className="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden">
+              <div key={bill.id} className={`bg-dark-800 rounded-xl border overflow-hidden ${isSettled ? 'border-dark-500' : 'border-dark-600'}`}>
                 <div
-                  className="px-4 py-3 flex items-center cursor-pointer active:bg-dark-700/50 transition-colors"
+                  className="px-4 py-3 flex items-center gap-2 cursor-pointer active:bg-dark-700/50 transition-colors"
                   onClick={() => toggleExpand(bill.id)}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                       <span className="text-white text-sm font-medium truncate">{bill.ownerName}</span>
                       <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${status.color} ${status.bg}`}>
                         {status.icon}
                         {status.label}
                       </span>
+                      {bill.exportedAt && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full text-accent-green bg-accent-green/15">
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent-green" />
+                          已导出
+                        </span>
+                      )}
+                      {isSettled && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full text-gray-400 bg-gray-500/15">
+                          <Lock size={10} />
+                          已结算，不可修改
+                        </span>
+                      )}
                     </div>
                     <span className="font-mono text-xl font-semibold text-white">¥{bill.totalStorageFee.toFixed(2)}</span>
                   </div>
-                  <div className="ml-2 text-gray-500">
-                    {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleExport(bill) }}
+                      className="flex items-center gap-1 bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white text-[11px] font-medium px-2.5 py-1.5 rounded-lg active:scale-95 transition-all"
+                      title="导出CSV"
+                    >
+                      <Download size={12} />
+                      导出
+                    </button>
+                    {bill.status === 'pending' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleDiff(bill.id) }}
+                        className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1.5 rounded-lg active:scale-95 transition-all ${
+                          isDiffExpanded
+                            ? 'bg-accent-purple/25 text-accent-purple'
+                            : 'bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white'
+                        }`}
+                        title="复核差异"
+                      >
+                        <GitCompare size={12} />
+                        复核差异
+                      </button>
+                    )}
+                    <div className="text-gray-500 ml-1">
+                      {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    </div>
                   </div>
                 </div>
 
+                {isDiffExpanded && diff && (
+                  <div className="px-4 pb-3 border-t border-dark-600 bg-dark-700/30 animate-slide-up">
+                    <div className="pt-3">
+                      {allDiffZero ? (
+                        <div className="flex items-center justify-center gap-1.5 bg-accent-green/10 text-accent-green text-sm font-medium py-2.5 rounded-lg border border-accent-green/20">
+                          <CheckCircle2 size={14} />
+                          数据一致 ✓
+                        </div>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-4 gap-1.5 mb-3">
+                            <DiffAmount value={diff.amountDiff} label="总金额" />
+                            <DiffAmount value={diff.platformDiff} label="平台" />
+                            <DiffAmount value={diff.warehouseDiff} label="仓库" />
+                            <DiffAmount value={diff.ownerDiff} label="货主" />
+                          </div>
+                          {diff.addedDetails.length > 0 && (
+                            <div className="mb-2">
+                              <div className="flex items-center gap-1 text-[11px] font-medium text-accent-red mb-1.5">
+                                <Plus size={11} />
+                                新增明细（{diff.addedDetails.length}）
+                              </div>
+                              <div className="space-y-1">
+                                {diff.addedDetails.map((d, i) => (
+                                  <div key={`a-${i}`} className="flex items-center gap-2 bg-accent-red/8 border border-accent-red/15 rounded-md px-2 py-1.5">
+                                    <Plus size={10} className="text-accent-red flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-[11px] text-gray-300 truncate">{d.description}</div>
+                                      <div className="text-[9px] text-gray-500">{d.date}</div>
+                                    </div>
+                                    <span className="font-mono text-[11px] text-accent-red flex-shrink-0">+¥{d.amount.toFixed(2)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {diff.removedDetails.length > 0 && (
+                            <div>
+                              <div className="flex items-center gap-1 text-[11px] font-medium text-accent-green mb-1.5">
+                                <Minus size={11} />
+                                移除明细（{diff.removedDetails.length}）
+                              </div>
+                              <div className="space-y-1">
+                                {diff.removedDetails.map((d, i) => (
+                                  <div key={`r-${i}`} className="flex items-center gap-2 bg-accent-green/8 border border-accent-green/15 rounded-md px-2 py-1.5">
+                                    <Minus size={10} className="text-accent-green flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-[11px] text-gray-300 truncate">{d.description}</div>
+                                      <div className="text-[9px] text-gray-500">{d.date}</div>
+                                    </div>
+                                    <span className="font-mono text-[11px] text-accent-green flex-shrink-0">-¥{d.amount.toFixed(2)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {isExpanded && (
-                  <div className="px-4 pb-4 animate-slide-up">
+                  <div className="px-4 pb-4 border-t border-dark-600 animate-slide-up">
+                    {(bill.confirmedAt || bill.settledAt || bill.exportedAt) && (
+                      <div className="pt-3 mb-3 flex flex-wrap gap-x-4 gap-y-1.5">
+                        {bill.confirmedAt && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
+                            <CircleDot size={11} className="text-accent-blue" />
+                            确认时间：<span className="font-mono text-gray-300">{formatDate(bill.confirmedAt)}</span>
+                          </div>
+                        )}
+                        {bill.settledAt && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
+                            <CheckCircle2 size={11} className="text-accent-green" />
+                            结算时间：<span className="font-mono text-gray-300">{formatDate(bill.settledAt)}</span>
+                          </div>
+                        )}
+                        {bill.exportedAt && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
+                            <Download size={11} className="text-accent-purple" />
+                            导出时间：<span className="font-mono text-gray-300">{formatDate(bill.exportedAt)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-3 gap-2 mb-4">
                       <div className="bg-dark-700 rounded-lg px-2 py-2 text-center">
                         <div className="text-[10px] text-accent-blue mb-0.5">平台收入</div>
@@ -204,7 +385,7 @@ export default function Settlement() {
                       </div>
                     </div>
 
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-2">
                       {bill.status === 'pending' && (
                         <button
                           onClick={(e) => { e.stopPropagation(); confirmSettlement(bill.id) }}
@@ -223,9 +404,9 @@ export default function Settlement() {
                           结算
                         </button>
                       )}
-                      {bill.status === 'settled' && (
-                        <span className="inline-flex items-center gap-1 text-sm text-accent-green/60 px-4 py-2">
-                          <CheckCircle2 size={14} />
+                      {isSettled && (
+                        <span className="inline-flex items-center gap-1 text-sm text-gray-500 px-4 py-2 bg-dark-700/50 rounded-lg">
+                          <Lock size={14} />
                           已结算
                         </span>
                       )}

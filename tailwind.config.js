@@ -21,6 +21,7 @@ export default {
           amber: '#f59e0b',
           green: '#10b981',
           red: '#ef4444',
+          purple: '#a855f7',
         },
       },
       fontFamily: {

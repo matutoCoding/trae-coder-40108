@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
 import Layout from "@/components/Layout"
 import Dashboard from "@/pages/Dashboard"
+import Analytics from "@/pages/Analytics"
 import BatchList from "@/pages/BatchList"
 import BatchRegister from "@/pages/BatchRegister"
 import OutboundList from "@/pages/OutboundList"
@@ -15,6 +16,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="/batch" element={<BatchList />} />
           <Route path="/batch/register" element={<BatchRegister />} />
           <Route path="/outbound" element={<OutboundList />} />

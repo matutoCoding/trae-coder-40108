@@ -3,6 +3,7 @@ import { MapPin, Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Batch } from '@/types'
 import StatusBadge from '@/components/StatusBadge'
+import { computeBatchStatus, computeDaysUntilExpiry } from '@/store/useWarehouseStore'
 
 interface BatchCardProps {
   batch: Batch
@@ -14,22 +15,17 @@ const stripeColorMap = {
   expired: 'bg-accent-red',
 }
 
-function getDaysUntilExpiry(expiryDate: string): number {
-  const now = new Date()
-  const expiry = new Date(expiryDate)
-  return Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-}
-
 export default function BatchCard({ batch }: BatchCardProps) {
   const navigate = useNavigate()
-  const daysLeft = getDaysUntilExpiry(batch.expiryDate)
+  const status = computeBatchStatus(batch.expiryDate)
+  const daysLeft = computeDaysUntilExpiry(batch.expiryDate)
 
   return (
     <div
       onClick={() => navigate(`/batch/${batch.id}`)}
       className="relative bg-dark-800 border border-dark-600 rounded-xl overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
     >
-      <div className={cn('absolute left-0 top-0 bottom-0 w-1', stripeColorMap[batch.status])} />
+      <div className={cn('absolute left-0 top-0 bottom-0 w-1', stripeColorMap[status])} />
 
       <div className="pl-4 pr-3 py-3">
         <div className="flex items-start justify-between mb-2">
@@ -37,7 +33,7 @@ export default function BatchCard({ batch }: BatchCardProps) {
             <p className="text-sm font-semibold text-white">{batch.batchNo}</p>
             <p className="text-xs text-gray-400 mt-0.5">{batch.skuName}</p>
           </div>
-          <StatusBadge status={batch.status} />
+          <StatusBadge status={status} />
         </div>
 
         <div className="flex items-center gap-4 text-xs text-gray-500">

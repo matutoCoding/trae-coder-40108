@@ -15,61 +15,61 @@ export const initialBatches: Batch[] = [
     id: 'B001', batchNo: 'BN-2026-0301', sku: 'SKU-001', skuName: '有机牛奶1L装',
     location: 'A-01-01', productionDate: fmt(addDays(today, -120)), expiryDate: fmt(addDays(today, -5)),
     shelfLifeDays: 180, quantity: 500, remainingQuantity: 320,
-    status: 'expired', ownerId: 'O001', ownerName: '绿源食品', createdAt: fmt(addDays(today, -120)),
+    ownerId: 'O001', ownerName: '绿源食品', createdAt: fmt(addDays(today, -120)),
   },
   {
     id: 'B002', batchNo: 'BN-2026-0315', sku: 'SKU-001', skuName: '有机牛奶1L装',
     location: 'A-01-02', productionDate: fmt(addDays(today, -90)), expiryDate: fmt(addDays(today, 20)),
     shelfLifeDays: 180, quantity: 400, remainingQuantity: 380,
-    status: 'nearExpiry', ownerId: 'O001', ownerName: '绿源食品', createdAt: fmt(addDays(today, -90)),
+    ownerId: 'O001', ownerName: '绿源食品', createdAt: fmt(addDays(today, -90)),
   },
   {
     id: 'B003', batchNo: 'BN-2026-0401', sku: 'SKU-002', skuName: '进口橄榄油500ml',
     location: 'B-02-03', productionDate: fmt(addDays(today, -180)), expiryDate: fmt(addDays(today, 45)),
     shelfLifeDays: 365, quantity: 200, remainingQuantity: 180,
-    status: 'nearExpiry', ownerId: 'O002', ownerName: '海纳贸易', createdAt: fmt(addDays(today, -180)),
+    ownerId: 'O002', ownerName: '海纳贸易', createdAt: fmt(addDays(today, -180)),
   },
   {
     id: 'B004', batchNo: 'BN-2026-0415', sku: 'SKU-003', skuName: '全麦面包750g',
     location: 'C-03-01', productionDate: fmt(addDays(today, -30)), expiryDate: fmt(addDays(today, 15)),
     shelfLifeDays: 90, quantity: 600, remainingQuantity: 550,
-    status: 'nearExpiry', ownerId: 'O002', ownerName: '海纳贸易', createdAt: fmt(addDays(today, -30)),
+    ownerId: 'O002', ownerName: '海纳贸易', createdAt: fmt(addDays(today, -30)),
   },
   {
     id: 'B005', batchNo: 'BN-2026-0501', sku: 'SKU-004', skuName: '冷冻水饺2kg',
     location: 'D-04-02', productionDate: fmt(addDays(today, -60)), expiryDate: fmt(addDays(today, 120)),
     shelfLifeDays: 365, quantity: 300, remainingQuantity: 280,
-    status: 'normal', ownerId: 'O003', ownerName: '味佳食品', createdAt: fmt(addDays(today, -60)),
+    ownerId: 'O003', ownerName: '味佳食品', createdAt: fmt(addDays(today, -60)),
   },
   {
     id: 'B006', batchNo: 'BN-2026-0515', sku: 'SKU-005', skuName: '坚果礼盒1.5kg',
     location: 'A-02-01', productionDate: fmt(addDays(today, -45)), expiryDate: fmt(addDays(today, 200)),
     shelfLifeDays: 365, quantity: 150, remainingQuantity: 150,
-    status: 'normal', ownerId: 'O003', ownerName: '味佳食品', createdAt: fmt(addDays(today, -45)),
+    ownerId: 'O003', ownerName: '味佳食品', createdAt: fmt(addDays(today, -45)),
   },
   {
     id: 'B007', batchNo: 'BN-2026-0601', sku: 'SKU-002', skuName: '进口橄榄油500ml',
     location: 'B-02-04', productionDate: fmt(addDays(today, -10)), expiryDate: fmt(addDays(today, 355)),
     shelfLifeDays: 365, quantity: 250, remainingQuantity: 250,
-    status: 'normal', ownerId: 'O002', ownerName: '海纳贸易', createdAt: fmt(addDays(today, -10)),
+    ownerId: 'O002', ownerName: '海纳贸易', createdAt: fmt(addDays(today, -10)),
   },
   {
     id: 'B008', batchNo: 'BN-2026-0605', sku: 'SKU-006', skuName: '鲜榨果汁1L',
     location: 'E-05-01', productionDate: fmt(addDays(today, -15)), expiryDate: fmt(addDays(today, 8)),
     shelfLifeDays: 60, quantity: 400, remainingQuantity: 380,
-    status: 'nearExpiry', ownerId: 'O001', ownerName: '绿源食品', createdAt: fmt(addDays(today, -15)),
+    ownerId: 'O001', ownerName: '绿源食品', createdAt: fmt(addDays(today, -15)),
   },
   {
     id: 'B009', batchNo: 'BN-2026-0610', sku: 'SKU-007', skuName: '有机蜂蜜500g',
     location: 'F-06-02', productionDate: fmt(addDays(today, -30)), expiryDate: fmt(addDays(today, 700)),
     shelfLifeDays: 730, quantity: 100, remainingQuantity: 100,
-    status: 'normal', ownerId: 'O003', ownerName: '味佳食品', createdAt: fmt(addDays(today, -30)),
+    ownerId: 'O003', ownerName: '味佳食品', createdAt: fmt(addDays(today, -30)),
   },
   {
     id: 'B010', batchNo: 'BN-2026-0612', sku: 'SKU-003', skuName: '全麦面包750g',
     location: 'C-03-02', productionDate: fmt(addDays(today, -2)), expiryDate: fmt(addDays(today, 88)),
     shelfLifeDays: 90, quantity: 800, remainingQuantity: 800,
-    status: 'normal', ownerId: 'O002', ownerName: '海纳贸易', createdAt: fmt(addDays(today, -2)),
+    ownerId: 'O002', ownerName: '海纳贸易', createdAt: fmt(addDays(today, -2)),
   },
 ]
 
@@ -79,8 +79,8 @@ export const initialOutboundOrders: OutboundOrder[] = [
     quantity: 120, batches: [
       { batchId: 'B002', batchNo: 'BN-2026-0315', quantity: 120, expiryDate: fmt(addDays(today, 20)), isFifoRecommended: true },
     ],
-    status: 'completed', createdAt: fmt(addDays(today, -9)), confirmedAt: fmt(addDays(today, -9)),
-    ownerId: 'O001', ownerName: '绿源食品',
+    status: 'shipped', createdAt: fmt(addDays(today, -9)), pickedAt: fmt(addDays(today, -9)), shippedAt: fmt(addDays(today, -9)),
+    ownerId: 'O001', ownerName: '绿源食品', operationFee: 600,
   },
   {
     id: 'OB002', orderNo: 'OUT-20260612-001', sku: 'SKU-002', skuName: '进口橄榄油500ml',
@@ -88,24 +88,24 @@ export const initialOutboundOrders: OutboundOrder[] = [
       { batchId: 'B003', batchNo: 'BN-2026-0401', quantity: 20, expiryDate: fmt(addDays(today, 45)), isFifoRecommended: true },
       { batchId: 'B007', batchNo: 'BN-2026-0601', quantity: 30, expiryDate: fmt(addDays(today, 355)), isFifoRecommended: false },
     ],
-    status: 'completed', createdAt: fmt(addDays(today, -7)), confirmedAt: fmt(addDays(today, -7)),
-    ownerId: 'O002', ownerName: '海纳贸易',
+    status: 'shipped', createdAt: fmt(addDays(today, -7)), pickedAt: fmt(addDays(today, -7)), shippedAt: fmt(addDays(today, -7)),
+    ownerId: 'O002', ownerName: '海纳贸易', operationFee: 500,
   },
   {
     id: 'OB003', orderNo: 'OUT-20260615-001', sku: 'SKU-004', skuName: '冷冻水饺2kg',
     quantity: 50, batches: [
       { batchId: 'B005', batchNo: 'BN-2026-0501', quantity: 50, expiryDate: fmt(addDays(today, 120)), isFifoRecommended: true },
     ],
-    status: 'confirmed', createdAt: fmt(addDays(today, -4)), confirmedAt: fmt(addDays(today, -4)),
-    ownerId: 'O003', ownerName: '味佳食品',
+    status: 'picked', createdAt: fmt(addDays(today, -4)), pickedAt: fmt(addDays(today, -4)),
+    ownerId: 'O003', ownerName: '味佳食品', operationFee: 250,
   },
   {
     id: 'OB004', orderNo: 'OUT-20260618-001', sku: 'SKU-003', skuName: '全麦面包750g',
     quantity: 100, batches: [
       { batchId: 'B004', batchNo: 'BN-2026-0415', quantity: 100, expiryDate: fmt(addDays(today, 15)), isFifoRecommended: true },
     ],
-    status: 'pending', createdAt: fmt(today),
-    ownerId: 'O002', ownerName: '海纳贸易',
+    status: 'picking', createdAt: fmt(today),
+    ownerId: 'O002', ownerName: '海纳贸易', operationFee: 500,
   },
 ]
 

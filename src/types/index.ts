@@ -9,7 +9,6 @@ export interface Batch {
   shelfLifeDays: number
   quantity: number
   remainingQuantity: number
-  status: 'normal' | 'nearExpiry' | 'expired'
   ownerId: string
   ownerName: string
   createdAt: string
@@ -30,11 +29,13 @@ export interface OutboundOrder {
   skuName: string
   quantity: number
   batches: OutboundBatchItem[]
-  status: 'pending' | 'confirmed' | 'completed'
+  status: 'picking' | 'picked' | 'shipped'
   createdAt: string
-  confirmedAt?: string
+  pickedAt?: string
+  shippedAt?: string
   ownerId: string
   ownerName: string
+  operationFee?: number
 }
 
 export interface CommissionRule {
@@ -94,6 +95,8 @@ export interface SettlementBill {
   status: 'pending' | 'confirmed' | 'settled'
   createdAt: string
   confirmedAt?: string
+  settledAt?: string
+  exportedAt?: string
   details: SettlementDetail[]
 }
 
@@ -113,4 +116,27 @@ export interface FIFORecommendation {
   recommendedQty: number
   status: BatchStatus
   daysUntilExpiry: number
+}
+
+export interface AnalyticsSummary {
+  period: string
+  ownerId: string
+  ownerName: string
+  totalRent: number
+  totalOutboundFee: number
+  platformIncome: number
+  warehouseIncome: number
+  ownerPayable: number
+  outboundCount: number
+  rentDays: number
+  settlementBillId?: string
+}
+
+export interface SettlementDiff {
+  addedDetails: SettlementDetail[]
+  removedDetails: SettlementDetail[]
+  amountDiff: number
+  platformDiff: number
+  warehouseDiff: number
+  ownerDiff: number
 }

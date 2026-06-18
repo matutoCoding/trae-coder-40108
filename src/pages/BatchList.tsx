@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, Plus, Inbox } from 'lucide-react'
-import { useWarehouseStore } from '@/store/useWarehouseStore'
+import { useWarehouseStore, computeBatchStatus } from '@/store/useWarehouseStore'
 import BatchCard from '@/components/BatchCard'
 import { cn } from '@/lib/utils'
 import type { BatchStatus } from '@/types'
@@ -22,7 +22,7 @@ export default function BatchList() {
   const filtered = useMemo(() => {
     let result = batches
     if (activeTab !== 'all') {
-      result = result.filter((b) => b.status === activeTab)
+      result = result.filter((b) => computeBatchStatus(b.expiryDate) === activeTab)
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
