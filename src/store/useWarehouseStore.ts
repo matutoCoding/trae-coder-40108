@@ -35,7 +35,7 @@ interface WarehouseState {
   confirmSettlement: (id: string) => void
   settleSettlement: (id: string) => void
   compareSettlementDiff: (id: string) => SettlementDiff | null
-  exportSettlementToCSV: (id: string) => string
+  exportSettlementToCSV: (id: string) => { csv: string; filename: string } | null
 
   getAnalyticsSummary: (period: string, ownerId?: string) => AnalyticsSummary[]
 }
@@ -573,7 +573,7 @@ export const useWarehouseStore = create<WarehouseState>((set, get) => ({
   exportSettlementToCSV: (id) => {
     const state = get()
     const bill = state.settlementBills.find(b => b.id === id)
-    if (!bill) return ''
+    if (!bill) return null
 
     set(s => {
       const next = {
@@ -583,16 +583,60 @@ export const useWarehouseStore = create<WarehouseState>((set, get) => ({
       return next
     })
 
+    const statusLabelMap: Record<SettlementBill['status'], string> = {
+      pending: '待确认',
+      confirmed: '已确认·快照',
+      settled: '已结算·锁定',
+    }
+    const statusLabel = statusLabelMap[bill.status]
+    const fileStatusMap: Record<SettlementBill['status'], string> = {
+      pending: '待确认',
+      confirmed: '已确认',
+      settled: '已结算',
+    }
+    const nowISO = new Date().toISOString()
+    const filename = `${bill.period}-${bill.ownerName}-${fileStatusMap[bill.status]}-对账单.csv`
+
+    const escapeCSV = (val: any) => `"${String(val).replace(/"/g, '""')}"`
+
+    const metaLines: string[] = [
+      [escapeCSV('账期'), escapeCSV(bill.period)].join(','),
+      [escapeCSV('货主'), escapeCSV(bill.ownerName)].join(','),
+      [escapeCSV('账单状态'), escapeCSV(statusLabel)].join(','),
+      [escapeCSV('生成时间'), escapeCSV(bill.createdAt)].join(','),
+      [escapeCSV('导出时间'), escapeCSV(nowISO)].join(','),
+    ]
+
+    const diff = state.compareSettlementDiff(id)
+    const diffLines: string[] = []
+    if (diff) {
+      const hasNonZeroDiff = diff.amountDiff !== 0 || diff.platformDiff !== 0 || diff.warehouseDiff !== 0 || diff.ownerDiff !== 0
+      if (hasNonZeroDiff) {
+        const fmtDiff = (v: number) => v >= 0 ? `+${v.toFixed(2)}` : v.toFixed(2)
+        diffLines.push(
+          ['','','','','','','','差异摘要','','',''].map(escapeCSV).join(','),
+          ['','','','','','','','项目','原账单金额','新增金额','差异'].map(escapeCSV).join(','),
+          ['','','','','','','','总金额',bill.totalStorageFee.toFixed(2),fmtDiff(diff.amountDiff),(bill.totalStorageFee + diff.amountDiff).toFixed(2)].map(escapeCSV).join(','),
+          ['','','','','','','','平台收入',bill.platformIncome.toFixed(2),fmtDiff(diff.platformDiff),(bill.platformIncome + diff.platformDiff).toFixed(2)].map(escapeCSV).join(','),
+          ['','','','','','','','仓库收入',bill.warehouseIncome.toFixed(2),fmtDiff(diff.warehouseDiff),(bill.warehouseIncome + diff.warehouseDiff).toFixed(2)].map(escapeCSV).join(','),
+          ['','','','','','','','货主应付',bill.ownerPayable.toFixed(2),fmtDiff(diff.ownerDiff),(bill.ownerPayable + diff.ownerDiff).toFixed(2)].map(escapeCSV).join(','),
+          '',
+        )
+      }
+    }
+
     const header = [
       '账期', '货主ID', '货主名称', '类型', '参考编号', '描述', '日期',
       '金额(元)', '平台分成(元)', '仓库分成(元)', '货主应付(元)'
-    ]
+    ].map(escapeCSV).join(',')
+
     const rows = bill.details.map(d => [
       bill.period, bill.ownerId, bill.ownerName,
       d.type === 'daily_rent' ? '仓租' : '出库操作费',
       d.referenceId, d.description, d.date,
       d.amount.toFixed(2), d.platformShare.toFixed(2), d.warehouseShare.toFixed(2), d.ownerShare.toFixed(2),
-    ])
+    ].map(escapeCSV).join(','))
+
     const summary = [
       bill.period, bill.ownerId, bill.ownerName, '合计', bill.id, '账单汇总',
       bill.createdAt,
@@ -600,9 +644,10 @@ export const useWarehouseStore = create<WarehouseState>((set, get) => ({
       bill.platformIncome.toFixed(2),
       bill.warehouseIncome.toFixed(2),
       bill.ownerPayable.toFixed(2),
-    ]
-    const all = [header, ...rows, summary]
-    return all.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    ].map(escapeCSV).join(',')
+
+    const csv = [...metaLines, ...diffLines, header, ...rows, summary].join('\n')
+    return { csv, filename }
   },
 
   getAnalyticsSummary: (period, ownerIdFilter) => {

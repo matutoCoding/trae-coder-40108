@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { FileText, Calendar, ChevronDown, ChevronUp, Warehouse, Truck, CheckCircle2, CircleDot, Clock, Lock, GitCompare, Download, Plus, Minus, AlertTriangle, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWarehouseStore } from '@/store/useWarehouseStore'
@@ -128,6 +128,7 @@ function DiffAmount({ value, label }: { value: number; label: string }) {
 
 export default function Settlement() {
   const location = useLocation()
+  const navigate = useNavigate()
   const locState = location.state as { ownerId?: string; period?: string } | null
   const [period, setPeriod] = useState<string>(() => locState?.period ?? getCurrentMonth())
   const [filterOwnerId, setFilterOwnerId] = useState<string | null>(() => locState?.ownerId ?? null)
@@ -179,10 +180,9 @@ export default function Settlement() {
   }
 
   const handleExport = (bill: SettlementBill) => {
-    const csv = exportSettlementToCSV(bill.id)
-    if (csv) {
-      const filename = `${bill.period}-${bill.ownerName}-对账单.csv`
-      downloadCSV(filename, csv)
+    const result = exportSettlementToCSV(bill.id)
+    if (result) {
+      downloadCSV(result.filename, result.csv)
     }
   }
 
@@ -258,6 +258,21 @@ export default function Settlement() {
             const summary = computeGroupedSummary(bill.details)
             const allDiffZero = diff && diff.amountDiff === 0 && diff.platformDiff === 0 && diff.warehouseDiff === 0 && diff.ownerDiff === 0
 
+            const exportBtnConfig = {
+              pending: {
+                label: '导出对账单',
+                className: 'bg-accent-blue hover:bg-accent-blue/90 text-white',
+              },
+              confirmed: {
+                label: '导出(快照)',
+                className: 'bg-accent-amber hover:bg-accent-amber/90 text-white',
+              },
+              settled: {
+                label: '导出(锁定)',
+                className: 'bg-gray-600 hover:bg-gray-500 text-gray-200',
+              },
+            }[bill.status]
+
             return (
               <div
                 key={bill.id}
@@ -298,26 +313,24 @@ export default function Settlement() {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <button
                       onClick={(e) => { e.stopPropagation(); handleExport(bill) }}
-                      className="flex items-center gap-1 bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white text-[11px] font-medium px-2.5 py-1.5 rounded-lg active:scale-95 transition-all"
+                      className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1.5 rounded-lg active:scale-95 transition-all ${exportBtnConfig.className}`}
                       title="导出CSV"
                     >
                       <Download size={12} />
-                      导出
+                      {exportBtnConfig.label}
                     </button>
-                    {bill.status !== 'settled' && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); toggleDiff(bill.id) }}
-                        className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1.5 rounded-lg active:scale-95 transition-all ${
-                          isDiffExpanded
-                            ? 'bg-accent-purple/25 text-accent-purple'
-                            : 'bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white'
-                        }`}
-                        title="复核差异"
-                      >
-                        <GitCompare size={12} />
-                        复核差异
-                      </button>
-                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleDiff(bill.id) }}
+                      className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1.5 rounded-lg active:scale-95 transition-all ${
+                        isDiffExpanded
+                          ? 'bg-accent-purple/25 text-accent-purple'
+                          : 'bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white'
+                      }`}
+                      title={isSettled ? '查看新增差异' : '复核差异'}
+                    >
+                      <GitCompare size={12} />
+                      {isSettled ? '查看新增差异' : '复核差异'}
+                    </button>
                     <div className="text-gray-500 ml-1">
                       {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                     </div>
@@ -327,6 +340,16 @@ export default function Settlement() {
                 {isDiffExpanded && diff && (
                   <div className="px-4 pb-3 border-t border-dark-600 bg-dark-700/30 animate-slide-up">
                     <div className="pt-3">
+                      {isSettled && !allDiffZero && (
+                        <div className="mb-2 text-[11px] text-accent-purple/80 bg-accent-purple/10 border border-accent-purple/20 rounded-md px-2.5 py-1.5">
+                          以下为账单结算后新增的仓租或出库费，原账单金额保持不变
+                        </div>
+                      )}
+                      <h4 className={`text-xs font-semibold mb-2 ${isSettled ? 'text-accent-purple' : 'text-gray-200'}`}>
+                        {bill.status === 'pending' && '复核差异'}
+                        {bill.status === 'confirmed' && '复核差异（快照对比）'}
+                        {bill.status === 'settled' && '📌 结算后新增记录'}
+                      </h4>
                       {allDiffZero ? (
                         <div className="flex items-center justify-center gap-1.5 bg-accent-green/10 text-accent-green text-sm font-medium py-2.5 rounded-lg border border-accent-green/20">
                           <CheckCircle2 size={14} />
@@ -346,15 +369,47 @@ export default function Settlement() {
                                 <Plus size={11} />
                                 新增明细（{diff.addedDetails.length}）
                               </div>
-                              <div className="space-y-1">
+                              <div className="space-y-1.5">
                                 {diff.addedDetails.map((d, i) => (
-                                  <div key={`a-${i}`} className="flex items-center gap-2 bg-accent-red/8 border border-accent-red/15 rounded-md px-2 py-1.5">
-                                    <Plus size={10} className="text-accent-red flex-shrink-0" />
+                                  <div
+                                    key={`a-${i}`}
+                                    className={cn(
+                                      'relative flex items-center gap-2 rounded-md px-2 py-1.5',
+                                      isSettled
+                                        ? 'bg-accent-purple/8 border-2 border-accent-purple/40'
+                                        : 'bg-accent-red/8 border border-accent-red/15'
+                                    )}
+                                  >
+                                    {isSettled && (
+                                      <span className="absolute -top-1.5 -right-1 bg-accent-purple text-white text-[9px] font-bold px-1.5 py-0.5 rounded-xs">
+                                        新增
+                                      </span>
+                                    )}
+                                    <Plus size={10} className={cn('flex-shrink-0', isSettled ? 'text-accent-purple' : 'text-accent-red')} />
                                     <div className="flex-1 min-w-0">
                                       <div className="text-[11px] text-gray-300 truncate">{d.description}</div>
                                       <div className="text-[9px] text-gray-500">{d.date}</div>
                                     </div>
-                                    <span className="font-mono text-[11px] text-accent-red flex-shrink-0">+¥{d.amount.toFixed(2)}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      {d.type === 'daily_rent' ? (
+                                        <span className="text-[9px] text-gray-400 bg-dark-600/50 px-1.5 py-0.5 rounded">
+                                          仓租 · {d.date}
+                                        </span>
+                                      ) : (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            navigate(`/outbound?referenceId=${d.referenceId}`)
+                                          }}
+                                          className="text-[9px] text-accent-blue hover:text-accent-blue/80 bg-dark-600/50 hover:bg-dark-600 px-1.5 py-0.5 rounded transition-colors"
+                                        >
+                                          查看出库单
+                                        </button>
+                                      )}
+                                      <span className={cn('font-mono text-[11px] flex-shrink-0', isSettled ? 'text-accent-purple' : 'text-accent-red')}>
+                                        +¥{d.amount.toFixed(2)}
+                                      </span>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -366,7 +421,7 @@ export default function Settlement() {
                                 <Minus size={11} />
                                 移除明细（{diff.removedDetails.length}）
                               </div>
-                              <div className="space-y-1">
+                              <div className="space-y-1.5">
                                 {diff.removedDetails.map((d, i) => (
                                   <div key={`r-${i}`} className="flex items-center gap-2 bg-accent-green/8 border border-accent-green/15 rounded-md px-2 py-1.5">
                                     <Minus size={10} className="text-accent-green flex-shrink-0" />
@@ -374,7 +429,24 @@ export default function Settlement() {
                                       <div className="text-[11px] text-gray-300 truncate">{d.description}</div>
                                       <div className="text-[9px] text-gray-500">{d.date}</div>
                                     </div>
-                                    <span className="font-mono text-[11px] text-accent-green flex-shrink-0">-¥{d.amount.toFixed(2)}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      {d.type === 'daily_rent' ? (
+                                        <span className="text-[9px] text-gray-400 bg-dark-600/50 px-1.5 py-0.5 rounded">
+                                          仓租 · {d.date}
+                                        </span>
+                                      ) : (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            navigate(`/outbound?referenceId=${d.referenceId}`)
+                                          }}
+                                          className="text-[9px] text-accent-blue hover:text-accent-blue/80 bg-dark-600/50 hover:bg-dark-600 px-1.5 py-0.5 rounded transition-colors"
+                                        >
+                                          查看出库单
+                                        </button>
+                                      )}
+                                      <span className="font-mono text-[11px] text-accent-green flex-shrink-0">-¥{d.amount.toFixed(2)}</span>
+                                    </div>
                                   </div>
                                 ))}
                               </div>

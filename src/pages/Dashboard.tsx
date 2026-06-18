@@ -23,7 +23,13 @@ export default function Dashboard() {
   const stats = useMemo(() => {
     const currentMonth = new Date().toISOString().split('T')[0].substring(0, 7)
     const monthRents = dailyRents.filter((r) => r.date.startsWith(currentMonth))
-    const monthCommissions = commissionRecords.filter((c) => c.createdAt.startsWith(currentMonth))
+    const orderMap = new Map(outboundOrders.map((o) => [o.id, o]))
+    const monthCommissions = commissionRecords.filter((c) => {
+      if (!c.createdAt.startsWith(currentMonth)) return false
+      if (!c.outboundOrderId) return true
+      const order = orderMap.get(c.outboundOrderId)
+      return !order || order.status === 'shipped'
+    })
     const monthlyFee = monthRents.reduce((s, r) => s + r.amount, 0) + monthCommissions.reduce((s, c) => s + c.totalFee, 0)
     return {
       totalBatches: batches.filter((b) => b.remainingQuantity > 0).length,
@@ -56,7 +62,10 @@ export default function Dashboard() {
         <StatCard title="在库批次" value={stats.totalBatches} icon={<Package size={18} />} color="blue" />
         <StatCard title="临期预警" value={stats.nearExpiryCount} icon={<AlertTriangle size={18} />} color="amber" />
         <StatCard title="过期锁定" value={stats.expiredCount} icon={<Lock size={18} />} color="red" />
-        <StatCard title="本月仓储费" value={`¥${stats.monthlyFee.toLocaleString()}`} icon={<DollarSign size={18} />} color="green" />
+        <div className="flex flex-col">
+          <StatCard title="本月仓储费" value={`¥${stats.monthlyFee.toLocaleString()}`} icon={<DollarSign size={18} />} color="green" />
+          <div className="text-center text-[9px] text-gray-500 mt-1">仅已出库订单</div>
+        </div>
       </div>
 
       <div className="px-4 mt-4 grid grid-cols-2 gap-3">

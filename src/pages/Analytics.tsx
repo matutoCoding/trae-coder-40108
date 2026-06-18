@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, DollarSign, Package, Calendar, ChevronRight, ChevronDown, Receipt, FileText, TrendingUp } from 'lucide-react'
+import { BarChart3, DollarSign, Package, Calendar, ChevronRight, ChevronDown, Receipt, FileText, TrendingUp, ArrowLeft, ExternalLink } from 'lucide-react'
 import {
   ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
@@ -29,6 +29,7 @@ export default function Analytics() {
   const navigate = useNavigate()
   const [period, setPeriod] = useState<string>(RECENT_MONTHS[0])
   const [expandedOwnerId, setExpandedOwnerId] = useState<string | null>(null)
+  const [drillDown, setDrillDown] = useState<{type: 'rent' | 'outbound'; ownerId: string; ownerName: string} | null>(null)
   const dailyRents = useWarehouseStore((s) => s.dailyRents)
   const commissionRecords = useWarehouseStore((s) => s.commissionRecords)
   const outboundOrders = useWarehouseStore((s) => s.outboundOrders)
@@ -86,6 +87,187 @@ export default function Analytics() {
     { label: '仓库收入', value: totals.warehouseIncome, icon: <DollarSign size={18} />, color: 'text-accent-amber' },
     { label: '货主应付', value: totals.ownerPayable, icon: <DollarSign size={18} />, color: 'text-accent-green' },
   ]
+
+  const commissionRules = useWarehouseStore((s) => s.commissionRules)
+
+  const drillDownData = useMemo(() => {
+    if (!drillDown) return null
+
+    const { type, ownerId } = drillDown
+
+    if (type === 'rent') {
+      return {
+        type: 'rent' as const,
+        data: dailyRents
+          .filter(r => r.ownerId === ownerId && r.date.startsWith(period))
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .map(r => ({
+            date: r.date,
+            location: r.location,
+            area: r.area,
+            dailyRate: r.dailyRate,
+            amount: r.amount,
+          })),
+      }
+    } else {
+      const rule = commissionRules.find(r => r.ownerId === ownerId)
+      const pRate = rule?.platformRate ?? 0.1
+      const wRate = rule?.warehouseRate ?? 0.6
+
+      const recordMap = new Map(
+        commissionRecords
+          .filter(c => c.ownerId === ownerId && c.createdAt.startsWith(period))
+          .map(c => [c.outboundOrderId, c])
+      )
+
+      const outboundItems = outboundOrders
+        .filter(o => o.ownerId === ownerId && o.status === 'shipped' && (o.shippedAt ?? o.createdAt).startsWith(period))
+        .map(o => {
+          const record = recordMap.get(o.id)
+          const fee = record?.totalFee ?? (o.operationFee ?? o.quantity * 5)
+          const platformShare = record?.platformShare ?? Math.round(fee * pRate * 100) / 100
+          const warehouseShare = record?.warehouseShare ?? Math.round(fee * wRate * 100) / 100
+          const ownerShare = record?.ownerShare ?? Math.round((fee - platformShare - warehouseShare) * 100) / 100
+
+          return {
+            orderId: o.id,
+            orderNo: o.orderNo,
+            sku: o.sku,
+            skuName: o.skuName,
+            quantity: o.quantity,
+            operationFee: fee,
+            platformShare,
+            warehouseShare,
+            ownerShare,
+          }
+        })
+        .sort((a, b) => a.orderNo.localeCompare(b.orderNo))
+
+      return {
+        type: 'outbound' as const,
+        data: outboundItems,
+      }
+    }
+  }, [drillDown, period, dailyRents, commissionRecords, outboundOrders, commissionRules])
+
+  if (drillDown && drillDownData) {
+    const title = drillDown.type === 'rent' ? '仓租明细' : '出库费明细'
+    const typeColor = drillDown.type === 'rent' ? 'text-accent-blue' : 'text-accent-amber'
+    const totalAmount = drillDownData.type === 'rent'
+      ? drillDownData.data.reduce((s, d) => s + (d as {amount: number}).amount, 0)
+      : drillDownData.data.reduce((s, d) => s + (d as {operationFee: number}).operationFee, 0)
+
+    return (
+      <div className="min-h-screen bg-dark-900 font-body pb-6">
+        <div className="sticky top-0 z-10 bg-dark-900/95 backdrop-blur-sm border-b border-dark-600">
+          <div className="flex items-center justify-between px-4 pt-4 pb-3">
+            <button
+              onClick={() => setDrillDown(null)}
+              className="flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft size={16} />
+              <span>返回经营看板</span>
+            </button>
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              className="bg-dark-800 border border-dark-600 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-accent-blue"
+            >
+              {RECENT_MONTHS.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4">
+          <div className="mb-4">
+            <h1 className="text-xl font-display font-bold text-white">
+              {drillDown.ownerName} · {period} · {title}
+            </h1>
+            <div className="mt-2 flex items-center gap-4">
+              <div className="text-sm text-gray-400">
+                共 <span className={`font-mono font-semibold ${typeColor}`}>{drillDownData.data.length}</span> 条记录
+              </div>
+              <div className="text-sm text-gray-400">
+                合计 <span className={`font-mono font-semibold ${typeColor}`}>¥{formatMoney(totalAmount)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden">
+            {drillDownData.type === 'rent' ? (
+              <>
+                <div className="grid grid-cols-5 gap-2 px-4 py-3 bg-dark-700/50 border-b border-dark-600 text-xs font-medium text-gray-400">
+                  <div>日期</div>
+                  <div>位置</div>
+                  <div className="text-right">面积</div>
+                  <div className="text-right">日单价</div>
+                  <div className="text-right">金额</div>
+                </div>
+                <div className="divide-y divide-dark-600">
+                  {drillDownData.data.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-5 gap-2 px-4 py-3 text-xs hover:bg-dark-700/30 transition-colors">
+                      <div className="text-gray-300 font-mono">{item.date}</div>
+                      <div className="text-gray-300">{item.location}区</div>
+                      <div className="text-right text-gray-300 font-mono">{item.area}m²</div>
+                      <div className="text-right text-gray-300 font-mono">¥{formatMoney(item.dailyRate)}</div>
+                      <div className="text-right text-white font-mono font-semibold">¥{formatMoney(item.amount)}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-6 gap-2 px-4 py-3 bg-dark-700/50 border-b border-dark-600 text-xs font-medium text-gray-400">
+                  <div>出库单号</div>
+                  <div>SKU</div>
+                  <div className="text-right">数量</div>
+                  <div className="text-right">操作费</div>
+                  <div className="text-right">三方分摊</div>
+                  <div className="text-right">操作</div>
+                </div>
+                <div className="divide-y divide-dark-600">
+                  {drillDownData.data.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-6 gap-2 px-4 py-3 text-xs hover:bg-dark-700/30 transition-colors items-center">
+                      <div className="text-gray-300 font-mono">{item.orderNo}</div>
+                      <div className="text-gray-300 min-w-0">
+                        <div className="truncate">{item.sku}</div>
+                        <div className="text-[10px] text-gray-500 truncate">{item.skuName}</div>
+                      </div>
+                      <div className="text-right text-gray-300 font-mono">{item.quantity}</div>
+                      <div className="text-right text-white font-mono font-semibold">¥{formatMoney(item.operationFee)}</div>
+                      <div className="text-right text-[10px] leading-tight">
+                        <div className="text-accent-blue">平台 ¥{formatMoney(item.platformShare)}</div>
+                        <div className="text-accent-amber">仓库 ¥{formatMoney(item.warehouseShare)}</div>
+                        <div className="text-accent-green">货主 ¥{formatMoney(item.ownerShare)}</div>
+                      </div>
+                      <div className="text-right">
+                        <button
+                          onClick={() => navigate(`/outbound/${item.orderId}`)}
+                          className="inline-flex items-center gap-0.5 px-2 py-1 bg-dark-700 text-gray-400 rounded hover:bg-dark-600 hover:text-white transition-colors"
+                        >
+                          <span>查看</span>
+                          <ExternalLink size={10} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {drillDownData.data.length === 0 && (
+              <div className="py-12 text-center">
+                <Package size={40} className="text-dark-500 mx-auto mb-3" />
+                <div className="text-gray-500 text-sm">暂无{title}记录</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-dark-900 font-body pb-6">
@@ -345,7 +527,21 @@ export default function Analytics() {
               {isExpanded && (
                 <div className="mt-4 pt-4 border-t border-dark-600 space-y-4">
                   <div>
-                    <div className="text-xs font-medium text-accent-blue mb-2">仓租明细</div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs font-medium text-accent-blue">仓租明细</div>
+                      {ownerRents.length > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDrillDown({ type: 'rent', ownerId: item.ownerId, ownerName: item.ownerName })
+                          }}
+                          className="flex items-center gap-0.5 text-xs text-accent-blue hover:text-accent-blue/80 transition-colors"
+                        >
+                          <span>查看全部</span>
+                          <ChevronRight size={12} />
+                        </button>
+                      )}
+                    </div>
                     {ownerRentsDisplay.length === 0 ? (
                       <div className="text-xs text-gray-500 py-2">暂无仓租记录</div>
                     ) : (
@@ -373,7 +569,21 @@ export default function Analytics() {
                   </div>
 
                   <div>
-                    <div className="text-xs font-medium text-accent-amber mb-2">出库费明细</div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs font-medium text-accent-amber">出库费明细</div>
+                      {outboundDisplay.length > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDrillDown({ type: 'outbound', ownerId: item.ownerId, ownerName: item.ownerName })
+                          }}
+                          className="flex items-center gap-0.5 text-xs text-accent-amber hover:text-accent-amber/80 transition-colors"
+                        >
+                          <span>查看全部</span>
+                          <ChevronRight size={12} />
+                        </button>
+                      )}
+                    </div>
                     {outboundSlice.length === 0 ? (
                       <div className="text-xs text-gray-500 py-2">暂无出库费记录</div>
                     ) : (

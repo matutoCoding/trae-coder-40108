@@ -194,20 +194,77 @@ function ConfigTab({ rules, onUpdate }: { rules: CommissionRule[]; onUpdate: (id
 }
 
 function IncomeTab({ records }: { records: ReturnType<typeof useWarehouseStore.getState>['commissionRecords'] }) {
-  const totalIncome = records.reduce((s, r) => s + r.totalFee, 0)
-  const platformTotal = records.reduce((s, r) => s + r.platformShare, 0)
-  const warehouseTotal = records.reduce((s, r) => s + r.warehouseShare, 0)
+  const outboundOrders = useWarehouseStore((s) => s.outboundOrders)
+  const orderMap = useMemo(() => {
+    const map = new Map<string, typeof outboundOrders[number]>()
+    outboundOrders.forEach((o) => map.set(o.id, o))
+    return map
+  }, [outboundOrders])
+
+  const { shippedRecords, abnormalRecords } = useMemo(() => {
+    const shipped: typeof records = []
+    const abnormal: typeof records = []
+    records.forEach((r) => {
+      const order = r.outboundOrderId ? orderMap.get(r.outboundOrderId) : undefined
+      if (!order || order.status === 'shipped') {
+        shipped.push(r)
+      } else {
+        abnormal.push(r)
+      }
+    })
+    return { shippedRecords: shipped, abnormalRecords: abnormal }
+  }, [records, orderMap])
+
+  const totalIncome = shippedRecords.reduce((s, r) => s + r.totalFee, 0)
+  const platformTotal = shippedRecords.reduce((s, r) => s + r.platformShare, 0)
+  const warehouseTotal = shippedRecords.reduce((s, r) => s + r.warehouseShare, 0)
+
+  const getStatusText = (status: string) => {
+    if (status === 'picking') return '待拣货'
+    if (status === 'picked') return '已拣货'
+    return status
+  }
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
-        <SummaryCard label="总收入" value={totalIncome} color="text-white" />
-        <SummaryCard label="平台收入" value={platformTotal} color="text-accent-blue" />
-        <SummaryCard label="仓库收入" value={warehouseTotal} color="text-accent-green" />
+      <div className="space-y-2">
+        <div className="grid grid-cols-3 gap-3">
+          <SummaryCard label="总收入" value={totalIncome} color="text-white" />
+          <SummaryCard label="平台收入" value={platformTotal} color="text-accent-blue" />
+          <SummaryCard label="仓库收入" value={warehouseTotal} color="text-accent-green" />
+        </div>
+        <div className="text-center text-[10px] text-gray-500">仅包含已出库订单的收入</div>
       </div>
 
+      {abnormalRecords.length > 0 && (
+        <div className="bg-accent-red/10 border border-accent-red/30 rounded-xl p-4">
+          <div className="flex items-center gap-1.5 mb-3">
+            <span className="text-accent-red">⚠</span>
+            <span className="text-sm font-medium text-accent-red">异常流水（尚未出库）</span>
+          </div>
+          <div className="text-[11px] text-gray-400 mb-3">需等确认出库后才计入收入</div>
+          <div className="space-y-2">
+            {abnormalRecords.map((record) => {
+              const order = record.outboundOrderId ? orderMap.get(record.outboundOrderId) : undefined
+              return (
+                <div key={record.id} className="bg-dark-800/50 rounded-lg p-3 border border-dark-600">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-xs text-gray-400">{record.orderNo}</span>
+                    <span className="text-[10px] text-accent-red">状态：{order ? getStatusText(order.status) : '未知'}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white">{record.ownerName}</span>
+                    <span className="font-mono text-xs text-accent-red">¥{record.totalFee.toFixed(2)}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
-        {records.map((record) => {
+        {shippedRecords.map((record) => {
           const sumCheck = Math.abs(record.platformShare + record.warehouseShare + record.ownerShare - record.totalFee) < 0.01
           return (
             <div key={record.id} className="bg-dark-800 rounded-xl p-4 border border-dark-600">
