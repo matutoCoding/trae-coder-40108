@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronDown, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, ChevronDown, AlertTriangle, Lock } from 'lucide-react'
 import { useWarehouseStore } from '@/store/useWarehouseStore'
 
 interface SkuOption {
@@ -8,26 +8,37 @@ interface SkuOption {
   skuName: string
   ownerId: string
   ownerName: string
+  hasAvailableOnlyExpired: boolean
 }
 
 export default function OutboundCreate() {
   const navigate = useNavigate()
   const batches = useWarehouseStore((s) => s.batches)
   const createOutboundOrder = useWarehouseStore((s) => s.createOutboundOrder)
-  const getFIFORecommendations = useWarehouseStore((s) => s.getFIFORecommendations)
 
   const [selectedSku, setSelectedSku] = useState('')
   const [quantity, setQuantity] = useState('')
   const [skuDropdownOpen, setSkuDropdownOpen] = useState(false)
   const [showToast, setShowToast] = useState(false)
   const [toastMsg, setToastMsg] = useState('')
+  const [toastType, setToastType] = useState<'error' | 'success'>('error')
 
   const skuOptions: SkuOption[] = useMemo(() => {
     const seen = new Map<string, SkuOption>()
     for (const b of batches) {
-      if (!seen.has(b.sku) && b.remainingQuantity > 0) {
-        seen.set(b.sku, { sku: b.sku, skuName: b.skuName, ownerId: b.ownerId, ownerName: b.ownerName })
+      if (b.remainingQuantity <= 0) continue
+      if (seen.has(b.sku)) {
+        const existing = seen.get(b.sku)!
+        if (b.status !== 'expired') existing.hasAvailableOnlyExpired = false
+        continue
       }
+      seen.set(b.sku, {
+        sku: b.sku,
+        skuName: b.skuName,
+        ownerId: b.ownerId,
+        ownerName: b.ownerName,
+        hasAvailableOnlyExpired: b.status === 'expired',
+      })
     }
     return Array.from(seen.values())
   }, [batches])
@@ -37,17 +48,21 @@ export default function OutboundCreate() {
 
   const fifoRecommendations = useMemo(() => {
     if (!selectedSku || qty <= 0) return []
-    return getFIFORecommendations(selectedSku, qty)
-  }, [selectedSku, qty, getFIFORecommendations])
+    const store = useWarehouseStore.getState()
+    return store.getFIFORecommendations(selectedSku, qty)
+  }, [selectedSku, qty, batches])
 
   const hasExpired = fifoRecommendations.some((r) => r.status === 'expired')
   const validRecommendations = fifoRecommendations.filter((r) => r.status !== 'expired')
+  const totalAvailable = validRecommendations.reduce((s, r) => s + r.availableQty, 0)
+  const canOutbound = validRecommendations.length > 0 && totalAvailable >= qty
 
   const handleSubmit = () => {
     if (!selectedOption || qty <= 0) return
 
-    if (hasExpired) {
-      setToastMsg('存在过期批次，不可出库')
+    if (!canOutbound) {
+      setToastMsg('可用库存不足，无法出库')
+      setToastType('error')
       setShowToast(true)
       setTimeout(() => setShowToast(false), 2500)
       return
@@ -62,13 +77,20 @@ export default function OutboundCreate() {
     )
 
     if (!result) {
-      setToastMsg('创建失败，库存不足或存在过期批次')
+      setToastMsg('创建失败，库存不足')
+      setToastType('error')
       setShowToast(true)
       setTimeout(() => setShowToast(false), 2500)
       return
     }
 
-    navigate('/outbound')
+    setToastMsg('出库单创建成功')
+    setToastType('success')
+    setShowToast(true)
+    setTimeout(() => {
+      setShowToast(false)
+      navigate('/outbound')
+    }, 800)
   }
 
   return (
@@ -98,23 +120,37 @@ export default function OutboundCreate() {
               </button>
               {skuDropdownOpen && (
                 <div className="absolute z-20 mt-1 w-full rounded-xl bg-dark-700 py-1 shadow-xl">
-                  {skuOptions.map((opt) => (
-                    <button
-                      key={opt.sku}
-                      onClick={() => {
-                        setSelectedSku(opt.sku)
-                        setSkuDropdownOpen(false)
-                      }}
-                      className={`w-full px-4 py-2.5 text-left text-sm transition-colors ${
-                        selectedSku === opt.sku
-                          ? 'bg-accent-blue/20 text-accent-blue'
-                          : 'text-gray-300 active:bg-dark-600'
-                      }`}
-                    >
-                      <span className="font-medium">{opt.skuName}</span>
-                      <span className="ml-2 font-mono text-xs text-gray-500">{opt.sku}</span>
-                    </button>
-                  ))}
+                  {skuOptions.map((opt) => {
+                    const isOnlyExpired = opt.hasAvailableOnlyExpired
+                    return (
+                      <button
+                        key={opt.sku}
+                        disabled={isOnlyExpired}
+                        onClick={() => {
+                          setSelectedSku(opt.sku)
+                          setSkuDropdownOpen(false)
+                        }}
+                        className={`w-full px-4 py-2.5 text-left text-sm transition-colors flex items-center justify-between ${
+                          isOnlyExpired
+                            ? 'text-gray-600 cursor-not-allowed'
+                            : selectedSku === opt.sku
+                              ? 'bg-accent-blue/20 text-accent-blue'
+                              : 'text-gray-300 active:bg-dark-600'
+                        }`}
+                      >
+                        <span>
+                          <span className="font-medium">{opt.skuName}</span>
+                          <span className="ml-2 font-mono text-xs text-gray-500">{opt.sku}</span>
+                        </span>
+                        {isOnlyExpired && (
+                          <span className="flex items-center gap-1 text-xs text-accent-red">
+                            <Lock size={12} />
+                            全部过期
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -145,9 +181,12 @@ export default function OutboundCreate() {
             <h2 className="mb-3 text-sm font-medium text-gray-400">FIFO推荐</h2>
 
             {hasExpired && (
-              <div className="mb-3 flex items-center gap-2 rounded-xl bg-accent-red/10 px-4 py-3 text-accent-red">
+              <div className="mb-3 flex items-center gap-2 rounded-xl bg-accent-red/10 border border-accent-red/20 px-4 py-3 text-accent-red">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span className="text-sm font-medium">存在过期批次，不可出库</span>
+                <div>
+                  <span className="text-sm font-medium block">以下批次已过期，已被锁定不可出库</span>
+                  <span className="text-xs opacity-80">系统仅推荐未过期批次，按效期最近优先</span>
+                </div>
               </div>
             )}
 
@@ -159,20 +198,23 @@ export default function OutboundCreate() {
                     key={rec.batchId}
                     className={`rounded-xl bg-dark-800 p-4 ${
                       isExpired
-                        ? 'border border-accent-red/40'
+                        ? 'border border-accent-red/30 opacity-60'
                         : 'border border-accent-blue/40'
                     }`}
                   >
                     <div className="flex items-start justify-between">
                       <div>
-                        <p className="font-mono text-sm text-white">{rec.batchNo}</p>
+                        <p className={`font-mono text-sm ${isExpired ? 'text-gray-500' : 'text-white'}`}>
+                          {rec.batchNo}
+                        </p>
                         <p className="mt-1 text-xs text-gray-400">
                           效期 <span className="font-mono">{rec.expiryDate}</span>
                         </p>
                       </div>
                       {isExpired ? (
-                        <span className="rounded-full bg-accent-red/20 px-2 py-0.5 text-xs font-medium text-accent-red">
-                          已过期
+                        <span className="flex items-center gap-1 rounded-full bg-accent-red/20 px-2 py-0.5 text-xs font-medium text-accent-red">
+                          <Lock size={10} />
+                          过期锁定
                         </span>
                       ) : (
                         <span className="rounded-full bg-accent-blue/20 px-2 py-0.5 text-xs font-medium text-accent-blue">
@@ -182,7 +224,7 @@ export default function OutboundCreate() {
                     </div>
                     <div className="mt-2 flex items-center gap-4 text-xs">
                       <span className="text-gray-400">
-                        可用 <span className="font-mono font-medium text-white">{rec.availableQty}</span>
+                        可用 <span className={`font-mono font-medium ${isExpired ? 'text-gray-500' : 'text-white'}`}>{rec.availableQty}</span>
                       </span>
                       {!isExpired && (
                         <span className="text-gray-400">
@@ -190,8 +232,8 @@ export default function OutboundCreate() {
                         </span>
                       )}
                       <span className="text-gray-400">
-                        剩余 <span className={`font-mono font-medium ${rec.daysUntilExpiry <= 30 ? 'text-accent-amber' : 'text-white'}`}>
-                          {rec.daysUntilExpiry}天
+                        剩余 <span className={`font-mono font-medium ${rec.daysUntilExpiry <= 0 ? 'text-accent-red' : rec.daysUntilExpiry <= 30 ? 'text-accent-amber' : 'text-white'}`}>
+                          {rec.daysUntilExpiry <= 0 ? `已过期${Math.abs(rec.daysUntilExpiry)}天` : `${rec.daysUntilExpiry}天`}
                         </span>
                       </span>
                     </div>
@@ -200,12 +242,12 @@ export default function OutboundCreate() {
               })}
             </div>
 
-            {validRecommendations.length > 0 && !hasExpired && (
+            {validRecommendations.length > 0 && (
               <div className="mt-3 rounded-xl bg-dark-700 px-4 py-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">总计推荐出库</span>
-                  <span className="font-mono font-medium text-accent-blue">
-                    {validRecommendations.reduce((s, r) => s + r.recommendedQty, 0)}
+                  <span className="text-gray-400">可出库总量</span>
+                  <span className={`font-mono font-medium ${canOutbound ? 'text-accent-blue' : 'text-accent-amber'}`}>
+                    {totalAvailable} {canOutbound ? '✓' : '(不足)'}
                   </span>
                 </div>
               </div>
@@ -217,7 +259,7 @@ export default function OutboundCreate() {
       <div className="fixed inset-x-0 bottom-0 bg-dark-800/90 px-4 pb-6 pt-3 backdrop-blur-sm">
         <button
           onClick={handleSubmit}
-          disabled={!selectedOption || qty <= 0}
+          disabled={!selectedOption || qty <= 0 || !canOutbound}
           className="w-full rounded-xl bg-accent-blue py-3.5 text-base font-medium text-white transition-opacity disabled:opacity-40 active:opacity-80"
         >
           确认出库
@@ -225,7 +267,9 @@ export default function OutboundCreate() {
       </div>
 
       {showToast && (
-        <div className="fixed left-1/2 top-20 z-50 -translate-x-1/2 animate-pulse rounded-xl bg-accent-red px-5 py-3 text-sm font-medium text-white shadow-lg">
+        <div className={`fixed left-1/2 top-20 z-50 -translate-x-1/2 rounded-xl px-5 py-3 text-sm font-medium text-white shadow-lg ${
+          toastType === 'success' ? 'bg-accent-green' : 'bg-accent-red'
+        }`}>
           {toastMsg}
         </div>
       )}

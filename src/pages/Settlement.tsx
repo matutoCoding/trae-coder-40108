@@ -14,10 +14,39 @@ function getCurrentMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
+interface GroupedSummary {
+  rentTotal: number
+  rentPlatform: number
+  rentWarehouse: number
+  rentOwner: number
+  feeTotal: number
+  feePlatform: number
+  feeWarehouse: number
+  feeOwner: number
+}
+
+function computeGroupedSummary(details: SettlementBill['details']): GroupedSummary {
+  const rents = details.filter((d) => d.type === 'daily_rent')
+  const fees = details.filter((d) => d.type === 'outbound_fee')
+  return {
+    rentTotal: rents.reduce((s, d) => s + d.amount, 0),
+    rentPlatform: rents.reduce((s, d) => s + d.platformShare, 0),
+    rentWarehouse: rents.reduce((s, d) => s + d.warehouseShare, 0),
+    rentOwner: rents.reduce((s, d) => s + d.ownerShare, 0),
+    feeTotal: fees.reduce((s, d) => s + d.amount, 0),
+    feePlatform: fees.reduce((s, d) => s + d.platformShare, 0),
+    feeWarehouse: fees.reduce((s, d) => s + d.warehouseShare, 0),
+    feeOwner: fees.reduce((s, d) => s + d.ownerShare, 0),
+  }
+}
+
 export default function Settlement() {
   const [period, setPeriod] = useState(getCurrentMonth)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const { settlementBills, generateSettlement, confirmSettlement, settleSettlement } = useWarehouseStore()
+  const settlementBills = useWarehouseStore((s) => s.settlementBills)
+  const generateSettlement = useWarehouseStore((s) => s.generateSettlement)
+  const confirmSettlement = useWarehouseStore((s) => s.confirmSettlement)
+  const settleSettlement = useWarehouseStore((s) => s.settleSettlement)
 
   const filteredBills = useMemo(
     () => settlementBills.filter((b) => b.period === period),
@@ -61,6 +90,7 @@ export default function Settlement() {
           {filteredBills.map((bill) => {
             const isExpanded = expandedId === bill.id
             const status = statusConfig[bill.status]
+            const summary = computeGroupedSummary(bill.details)
 
             return (
               <div key={bill.id} className="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden">
@@ -85,7 +115,7 @@ export default function Settlement() {
 
                 {isExpanded && (
                   <div className="px-4 pb-4 animate-slide-up">
-                    <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="grid grid-cols-3 gap-2 mb-4">
                       <div className="bg-dark-700 rounded-lg px-2 py-2 text-center">
                         <div className="text-[10px] text-accent-blue mb-0.5">平台收入</div>
                         <div className="font-mono text-xs text-white">¥{bill.platformIncome.toFixed(2)}</div>
@@ -100,21 +130,78 @@ export default function Settlement() {
                       </div>
                     </div>
 
-                    <div className="space-y-1.5 mb-3">
-                      {bill.details.map((detail, idx) => (
-                        <div key={idx} className="flex items-center gap-2 bg-dark-700/60 rounded-lg px-3 py-2">
-                          {detail.type === 'daily_rent' ? (
-                            <Warehouse size={14} className="text-accent-blue flex-shrink-0" />
-                          ) : (
-                            <Truck size={14} className="text-accent-green flex-shrink-0" />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs text-gray-300 truncate">{detail.description}</div>
-                            <div className="text-[10px] text-gray-500">{detail.date}</div>
-                          </div>
-                          <span className="font-mono text-xs text-white flex-shrink-0">¥{detail.amount.toFixed(2)}</span>
+                    <div className="mb-4">
+                      <h4 className="text-xs text-gray-400 font-medium mb-2 flex items-center gap-1.5">
+                        <Warehouse size={12} className="text-accent-blue" />
+                        仓租汇总
+                      </h4>
+                      <div className="bg-dark-700/60 rounded-xl p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-gray-400">仓租合计</span>
+                          <span className="font-mono text-sm text-white font-semibold">¥{summary.rentTotal.toFixed(2)}</span>
                         </div>
-                      ))}
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="bg-dark-600/50 rounded-lg px-2 py-1.5 text-center">
+                            <div className="text-[10px] text-accent-blue">平台</div>
+                            <div className="font-mono text-[11px] text-white">¥{summary.rentPlatform.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-dark-600/50 rounded-lg px-2 py-1.5 text-center">
+                            <div className="text-[10px] text-accent-green">仓库</div>
+                            <div className="font-mono text-[11px] text-white">¥{summary.rentWarehouse.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-dark-600/50 rounded-lg px-2 py-1.5 text-center">
+                            <div className="text-[10px] text-accent-amber">货主</div>
+                            <div className="font-mono text-[11px] text-white">¥{summary.rentOwner.toFixed(2)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mb-4">
+                      <h4 className="text-xs text-gray-400 font-medium mb-2 flex items-center gap-1.5">
+                        <Truck size={12} className="text-accent-green" />
+                        出库操作费汇总
+                      </h4>
+                      <div className="bg-dark-700/60 rounded-xl p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-gray-400">操作费合计</span>
+                          <span className="font-mono text-sm text-white font-semibold">¥{summary.feeTotal.toFixed(2)}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="bg-dark-600/50 rounded-lg px-2 py-1.5 text-center">
+                            <div className="text-[10px] text-accent-blue">平台</div>
+                            <div className="font-mono text-[11px] text-white">¥{summary.feePlatform.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-dark-600/50 rounded-lg px-2 py-1.5 text-center">
+                            <div className="text-[10px] text-accent-green">仓库</div>
+                            <div className="font-mono text-[11px] text-white">¥{summary.feeWarehouse.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-dark-600/50 rounded-lg px-2 py-1.5 text-center">
+                            <div className="text-[10px] text-accent-amber">货主</div>
+                            <div className="font-mono text-[11px] text-white">¥{summary.feeOwner.toFixed(2)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mb-3">
+                      <h4 className="text-xs text-gray-400 font-medium mb-2">费用明细</h4>
+                      <div className="space-y-1.5">
+                        {bill.details.map((detail, idx) => (
+                          <div key={idx} className="flex items-center gap-2 bg-dark-700/40 rounded-lg px-3 py-2">
+                            {detail.type === 'daily_rent' ? (
+                              <Warehouse size={12} className="text-accent-blue flex-shrink-0" />
+                            ) : (
+                              <Truck size={12} className="text-accent-green flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-gray-300 truncate">{detail.description}</div>
+                              <div className="text-[10px] text-gray-500">{detail.date}</div>
+                            </div>
+                            <span className="font-mono text-xs text-white flex-shrink-0">¥{detail.amount.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="flex justify-end">

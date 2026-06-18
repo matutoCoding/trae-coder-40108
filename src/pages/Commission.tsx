@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { Settings, Wallet, Building2, ChevronDown, ChevronUp, Pencil, Check, X } from 'lucide-react'
+import { Settings, Wallet, Building2, Pencil, Check, X } from 'lucide-react'
 import { useWarehouseStore } from '@/store/useWarehouseStore'
 import type { CommissionRule } from '@/types'
 
@@ -17,7 +17,10 @@ const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
 
 export default function Commission() {
   const [activeTab, setActiveTab] = useState<TabKey>('config')
-  const { commissionRules, commissionRecords, dailyRents, updateCommissionRule } = useWarehouseStore()
+  const commissionRules = useWarehouseStore((s) => s.commissionRules)
+  const commissionRecords = useWarehouseStore((s) => s.commissionRecords)
+  const dailyRents = useWarehouseStore((s) => s.dailyRents)
+  const updateCommissionRule = useWarehouseStore((s) => s.updateCommissionRule)
 
   return (
     <div className="min-h-screen bg-dark-900 font-body pb-6">
@@ -79,12 +82,28 @@ function ConfigTab({ rules, onUpdate }: { rules: CommissionRule[]; onUpdate: (id
     setEditRates(null)
   }
 
-  const adjustRate = (key: 'platformRate' | 'warehouseRate' | 'ownerRate', value: number) => {
+  const adjustRate = (key: 'platformRate' | 'warehouseRate', value: number) => {
     if (!editRates) return
-    const others = (['platformRate', 'warehouseRate', 'ownerRate'] as const).filter((k) => k !== key)
-    const otherSum = others.reduce((s, k) => s + editRates[k], 0)
-    const clamped = Math.min(Math.max(value, 0), 100 - otherSum)
-    setEditRates({ ...editRates, [key]: clamped })
+    const clampedKey = Math.min(Math.max(value, 0), 100)
+    const newOtherKey = key === 'platformRate' ? editRates.warehouseRate : editRates.platformRate
+    const remaining = 100 - clampedKey
+    const newOwnerRate = remaining - newOtherKey
+
+    if (newOwnerRate < 0) {
+      const maxKey = 100 - newOtherKey
+      const finalKey = Math.min(clampedKey, maxKey)
+      setEditRates({
+        ...editRates,
+        [key]: finalKey,
+        ownerRate: 0,
+      })
+    } else {
+      setEditRates({
+        ...editRates,
+        [key]: clampedKey,
+        ownerRate: newOwnerRate,
+      })
+    }
   }
 
   return (
@@ -94,6 +113,7 @@ function ConfigTab({ rules, onUpdate }: { rules: CommissionRule[]; onUpdate: (id
         const pRate = isEditing ? (editRates?.platformRate ?? 0) : Math.round(rule.platformRate * 100)
         const wRate = isEditing ? (editRates?.warehouseRate ?? 0) : Math.round(rule.warehouseRate * 100)
         const oRate = isEditing ? (editRates?.ownerRate ?? 0) : Math.round(rule.ownerRate * 100)
+        const total = pRate + wRate + oRate
         const pieData = [
           { name: '平台', value: pRate },
           { name: '仓库', value: wRate },
@@ -133,29 +153,38 @@ function ConfigTab({ rules, onUpdate }: { rules: CommissionRule[]; onUpdate: (id
                 </ResponsiveContainer>
               </div>
               <div className="flex-1 space-y-3">
-                {pieData.map((item, i) => (
-                  <div key={item.name} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS[i] }} />
-                        <span className="text-gray-400">{PIE_LABELS[i]}</span>
-                      </span>
-                      <span className="font-mono text-white">{isEditing ? editRates?.[(['platformRate', 'warehouseRate', 'ownerRate'] as const)[i]] : item.value}%</span>
+                {(['platformRate', 'warehouseRate', 'ownerRate'] as const).map((key, i) => {
+                  const rateValue = isEditing ? (editRates?.[key] ?? 0) : [pRate, wRate, oRate][i]
+                  const isAuto = isEditing && key === 'ownerRate'
+                  const editableKey = key as 'platformRate' | 'warehouseRate'
+                  return (
+                    <div key={key} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS[i] }} />
+                          <span className="text-gray-400">{PIE_LABELS[i]}{isAuto ? ' (自动)' : ''}</span>
+                        </span>
+                        <span className="font-mono text-white">{rateValue}%</span>
+                      </div>
+                      {isEditing && !isAuto && (
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={rateValue}
+                          onChange={(e) => adjustRate(editableKey, Number(e.target.value))}
+                          className="w-full h-1.5 rounded-full appearance-none bg-dark-600 cursor-pointer"
+                          style={{ accentColor: PIE_COLORS[i] }}
+                        />
+                      )}
                     </div>
-                    {isEditing && (
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={editRates?.[(['platformRate', 'warehouseRate', 'ownerRate'] as const)[i]] ?? 0}
-                        onChange={(e) => adjustRate((['platformRate', 'warehouseRate', 'ownerRate'] as const)[i], Number(e.target.value))}
-                        className="w-full h-1.5 rounded-full appearance-none bg-dark-600 accent-accent-blue cursor-pointer"
-                        style={{ accentColor: PIE_COLORS[i] }}
-                      />
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
+            </div>
+
+            <div className={`mt-3 text-xs font-mono text-center ${total === 100 ? 'text-accent-green' : 'text-accent-red'}`}>
+              合计 {total}%
             </div>
           </div>
         )
@@ -178,32 +207,38 @@ function IncomeTab({ records }: { records: ReturnType<typeof useWarehouseStore.g
       </div>
 
       <div className="space-y-3">
-        {records.map((record) => (
-          <div key={record.id} className="bg-dark-800 rounded-xl p-4 border border-dark-600">
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-mono text-sm text-gray-400">{record.orderNo}</span>
-              <span className="text-xs text-gray-500">{record.createdAt}</span>
-            </div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-white text-sm">{record.ownerName}</span>
-              <span className="font-mono text-white font-semibold">¥{record.totalFee.toFixed(2)}</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-dark-700 rounded-lg px-2 py-1.5 text-center">
-                <div className="text-[10px] text-accent-blue mb-0.5">平台</div>
-                <div className="font-mono text-xs text-white">¥{record.platformShare.toFixed(2)}</div>
+        {records.map((record) => {
+          const sumCheck = Math.abs(record.platformShare + record.warehouseShare + record.ownerShare - record.totalFee) < 0.01
+          return (
+            <div key={record.id} className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-mono text-sm text-gray-400">{record.orderNo}</span>
+                <span className="text-xs text-gray-500">{record.createdAt}</span>
               </div>
-              <div className="bg-dark-700 rounded-lg px-2 py-1.5 text-center">
-                <div className="text-[10px] text-accent-green mb-0.5">仓库</div>
-                <div className="font-mono text-xs text-white">¥{record.warehouseShare.toFixed(2)}</div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-white text-sm">{record.ownerName}</span>
+                <span className="font-mono text-white font-semibold">¥{record.totalFee.toFixed(2)}</span>
               </div>
-              <div className="bg-dark-700 rounded-lg px-2 py-1.5 text-center">
-                <div className="text-[10px] text-accent-amber mb-0.5">货主</div>
-                <div className="font-mono text-xs text-white">¥{record.ownerShare.toFixed(2)}</div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-dark-700 rounded-lg px-2 py-1.5 text-center">
+                  <div className="text-[10px] text-accent-blue mb-0.5">平台</div>
+                  <div className="font-mono text-xs text-white">¥{record.platformShare.toFixed(2)}</div>
+                </div>
+                <div className="bg-dark-700 rounded-lg px-2 py-1.5 text-center">
+                  <div className="text-[10px] text-accent-green mb-0.5">仓库</div>
+                  <div className="font-mono text-xs text-white">¥{record.warehouseShare.toFixed(2)}</div>
+                </div>
+                <div className="bg-dark-700 rounded-lg px-2 py-1.5 text-center">
+                  <div className="text-[10px] text-accent-amber mb-0.5">货主</div>
+                  <div className="font-mono text-xs text-white">¥{record.ownerShare.toFixed(2)}</div>
+                </div>
+              </div>
+              <div className={`mt-2 text-[10px] font-mono text-right ${sumCheck ? 'text-accent-green' : 'text-accent-red'}`}>
+                三方合计 ¥{(record.platformShare + record.warehouseShare + record.ownerShare).toFixed(2)} {sumCheck ? '✓' : '⚠'}
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -220,10 +255,10 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
 
 function RentTab({ rents }: { rents: ReturnType<typeof useWarehouseStore.getState>['dailyRents'] }) {
   const chartData = useMemo(() => {
-    const today = new Date()
+    const todayDate = new Date()
     const days: { date: string; total: number }[] = []
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(today)
+      const d = new Date(todayDate)
       d.setDate(d.getDate() - i)
       const dateStr = d.toISOString().split('T')[0]
       const dayTotal = rents.filter((r) => r.date === dateStr).reduce((s, r) => s + r.amount, 0)
